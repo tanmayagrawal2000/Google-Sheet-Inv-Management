@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter create *)",
+      "Bash(flutter pub *)",
+      "Bash(flutter analyze *)",
+      "Bash(sed -i 's/_apis.sheets\\(\\)/_apis.sheetsApi\\(\\)/g' lib/features/inventory/data/sheets_repository.dart)",
+      "Bash(sed -i 's/_apis.drive\\(\\)/_apis.driveApi\\(\\)/g' lib/features/rooms/data/drive_repository.dart)",
+      "Bash(flutter test *)",
+      "Bash(flutter build *)",
+      "Bash(./gradlew signingReport)",
+      "Bash(flutter devices *)",
+      "Bash(flutter *)",
+      "Bash(git init *)",
+      "Bash(git remote *)"
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+# Copy this file to run_windows.ps1, paste your Web OAuth client credentials,
+# and run it. run_windows.ps1 is gitignored so secrets stay local.
+flutter run -d windows `
+  --dart-define=GOOGLE_DESKTOP_CLIENT_ID=YOUR_WEB_CLIENT_ID `
+  --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=YOUR_WEB_CLIENT_SECRET

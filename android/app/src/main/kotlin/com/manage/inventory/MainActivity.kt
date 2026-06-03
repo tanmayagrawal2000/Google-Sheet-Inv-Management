@@ -1,0 +1,5 @@
+package com.manage.inventory
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
