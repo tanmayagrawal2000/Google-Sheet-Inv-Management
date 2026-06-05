@@ -41,7 +41,8 @@ class SheetsRepository {
         .toSet();
   }
 
-  /// Creates a category tab, writes its header row, and applies formatting.
+  /// Creates a category tab, writes its header row, formula headers,
+  /// summary block, and applies formatting.
   Future<void> createCategory(String spreadsheetId, String title) async {
     final name = title.trim();
     final sheetId = await _addSheet(spreadsheetId, name, hidden: false);
@@ -57,6 +58,7 @@ class SheetsRepository {
       '${_qt(name)}!${fromCol}1:${toCol}1',
       [SheetSchema.formulaHeaders],
     );
+    await _writeSummaryBlock(spreadsheetId, name);
     try {
       await _applyHeaderFormat(spreadsheetId, sheetId);
     } catch (_) {}
@@ -78,6 +80,7 @@ class SheetsRepository {
         continue;
       }
       await _applyHeaderFormat(spreadsheetId, id);
+      await _writeSummaryBlock(spreadsheetId, title);
     }
     await ensureIssueLog(spreadsheetId);
     await ensureDamageLog(spreadsheetId);
@@ -184,6 +187,32 @@ class SheetsRepository {
 
   static sheets.Color _rgb(double r, double g, double b) =>
       sheets.Color(red: r, green: g, blue: b);
+
+  /// Writes a 5-row summary block (Total / Issued / Damaged / Available) using
+  /// whole-column SUM formulas that update automatically and never hit a row limit.
+  /// Positioned dynamically at [SheetSchema.summaryLabelCol] so adding new
+  /// data or formula columns never displaces it.
+  Future<void> _writeSummaryBlock(String spreadsheetId, String tab) async {
+    final lCol = A1.columnLetter(SheetSchema.summaryLabelCol);
+    final vCol = A1.columnLetter(SheetSchema.summaryValueCol);
+
+    final tc = A1.columnLetter(SheetSchema.formulaColTotal);
+    final ic = A1.columnLetter(SheetSchema.formulaColIssued);
+    final dc = A1.columnLetter(SheetSchema.formulaColDamaged);
+    final ac = A1.columnLetter(SheetSchema.formulaColAvailable);
+
+    await writeRange(
+      spreadsheetId,
+      '${_qt(tab)}!${lCol}1:${vCol}5',
+      [
+        ['Summary', ''],
+        ['Total',     '=SUM($tc:$tc)'],
+        ['Issued',    '=SUM($ic:$ic)'],
+        ['Damaged',   '=SUM($dc:$dc)'],
+        ['Available', '=SUM($ac:$ac)'],
+      ],
+    );
+  }
 
   /// Executes [_headerFormatRequests] for a known [sheetId].
   Future<void> _applyHeaderFormat(String spreadsheetId, int sheetId) async {

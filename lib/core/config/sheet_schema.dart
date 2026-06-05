@@ -31,6 +31,11 @@ class SheetSchema {
   static const int formulaColDamaged = 12;   // M
   static const int formulaColAvailable = 13; // N
 
+  /// Summary block — always 2 columns after [formulaColAvailable] so adding
+  /// new data or formula columns never displaces it.
+  static int get summaryLabelCol => formulaColAvailable + 2; // currently P
+  static int get summaryValueCol => formulaColAvailable + 3; // currently Q
+
   // ── Issue log columns ───────────────────────────────────────────────────────
 
   static const List<String> issueLogHeaders = <String>[
