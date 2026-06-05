@@ -2,19 +2,32 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-/// Adapts a [Stream] into a [Listenable] so GoRouter re-evaluates its redirect
-/// whenever the stream (e.g. auth state) emits.
+/// Adapts one or more [Stream]s into a [Listenable] so GoRouter re-evaluates
+/// its redirect whenever any of the streams emits.
 class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
+  GoRouterRefreshStream(Stream<dynamic> stream)
+      : _subscriptions = [] {
     notifyListeners();
-    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
+    _subscriptions.add(
+        stream.asBroadcastStream().listen((_) => notifyListeners()));
   }
 
-  late final StreamSubscription<dynamic> _subscription;
+  GoRouterRefreshStream.multi(List<Stream<dynamic>> streams)
+      : _subscriptions = [] {
+    notifyListeners();
+    for (final s in streams) {
+      _subscriptions.add(
+          s.asBroadcastStream().listen((_) => notifyListeners()));
+    }
+  }
+
+  final List<StreamSubscription<dynamic>> _subscriptions;
 
   @override
   void dispose() {
-    _subscription.cancel();
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
     super.dispose();
   }
 }

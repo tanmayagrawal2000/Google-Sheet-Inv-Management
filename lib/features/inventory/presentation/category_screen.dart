@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injector.dart';
+import '../../auth/cubit/user_session_cubit.dart';
 import '../../../shared/cubit/data_state.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/widgets/data_view.dart';
@@ -29,6 +30,9 @@ class CategoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session =
+        context.read<UserSessionCubit>().state.session;
+    final canWrite = session?.canWrite(roomName) ?? true;
     return BlocProvider(
       create: (_) => CategoryCubit(
         getIt<CatalogRepository>(),
@@ -36,9 +40,13 @@ class CategoryScreen extends StatelessWidget {
         getIt<DriveRepository>(),
         spreadsheetId: spreadsheetId,
         tab: tab,
+        canWrite: canWrite,
       )..load(),
       child: _CategoryView(
-          spreadsheetId: spreadsheetId, tab: tab, roomName: roomName),
+          spreadsheetId: spreadsheetId,
+          tab: tab,
+          roomName: roomName,
+          canWrite: canWrite),
     );
   }
 }
@@ -49,10 +57,12 @@ class _CategoryView extends StatefulWidget {
   const _CategoryView(
       {required this.spreadsheetId,
       required this.tab,
-      required this.roomName});
+      required this.roomName,
+      required this.canWrite});
   final String spreadsheetId;
   final String tab;
   final String roomName;
+  final bool canWrite;
 
   @override
   State<_CategoryView> createState() => _CategoryViewState();
@@ -101,6 +111,16 @@ class _CategoryViewState extends State<_CategoryView> {
           ),
         ),
         actions: [
+          if (!widget.canWrite)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Chip(
+                avatar: const Icon(Icons.lock_outline, size: 14),
+                label: const Text('Read only'),
+                labelStyle: const TextStyle(fontSize: 12),
+                padding: EdgeInsets.zero,
+              ),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () => context.read<CategoryCubit>().load(),
@@ -108,11 +128,13 @@ class _CategoryViewState extends State<_CategoryView> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addItem(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add item'),
-      ),
+      floatingActionButton: widget.canWrite
+          ? FloatingActionButton.extended(
+              onPressed: () => _addItem(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Add item'),
+            )
+          : null,
       body: BlocBuilder<CategoryCubit, DataState<CategoryData>>(
         builder: (context, state) {
           return Column(
@@ -139,6 +161,7 @@ class _CategoryViewState extends State<_CategoryView> {
                         item: filtered[i],
                         spreadsheetId: widget.spreadsheetId,
                         tab: widget.tab,
+                        canWrite: widget.canWrite,
                       ),
                     );
                   },
@@ -239,10 +262,12 @@ class _ItemCard extends StatelessWidget {
   const _ItemCard(
       {required this.item,
       required this.spreadsheetId,
-      required this.tab});
+      required this.tab,
+      required this.canWrite});
   final InventoryItem item;
   final String spreadsheetId;
   final String tab;
+  final bool canWrite;
 
   @override
   Widget build(BuildContext context) {
@@ -288,21 +313,31 @@ class _ItemCard extends StatelessWidget {
             if (v == 'delete') _confirmDelete(context);
           },
           itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'issue',
-              enabled: canIssue,
-              child: Text(
-                'Issue',
-                style: TextStyle(
-                  color: canIssue
-                      ? null
-                      : Theme.of(context).disabledColor,
+            if (canWrite)
+              PopupMenuItem(
+                value: 'issue',
+                enabled: canIssue,
+                child: Text(
+                  'Issue',
+                  style: TextStyle(
+                    color: canIssue
+                        ? null
+                        : Theme.of(context).disabledColor,
+                  ),
                 ),
               ),
-            ),
-            const PopupMenuItem(value: 'addqty', child: Text('Add qty')),
-            const PopupMenuItem(value: 'damaged', child: Text('Mark damaged')),
-            const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            if (canWrite)
+              const PopupMenuItem(value: 'addqty', child: Text('Add qty')),
+            if (canWrite)
+              const PopupMenuItem(
+                  value: 'damaged', child: Text('Mark damaged')),
+            if (canWrite)
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            if (!canWrite)
+              const PopupMenuItem(
+                enabled: false,
+                child: Text('Read-only access'),
+              ),
           ],
         ),
           ),

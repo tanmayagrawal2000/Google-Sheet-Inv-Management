@@ -17,6 +17,7 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
     this._drive, {
     required this.spreadsheetId,
     required this.tab,
+    this.canWrite = true,
   }) : super(const DataState<CategoryData>());
 
   final CatalogRepository _catalog;
@@ -24,6 +25,10 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
   final DriveRepository _drive;
   final String spreadsheetId;
   final String tab;
+
+  /// Whether the current user has write access to this category.
+  /// All mutation methods return false immediately when this is false.
+  final bool canWrite;
 
   Future<void> load() async {
     emit(state.copyWith(
@@ -52,6 +57,10 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
     String billDate = '',
     XFile? imageFile,
   }) async {
+    if (!canWrite) {
+      emit(state.copyWith(error: 'Read-only access.'));
+      return false;
+    }
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
       String imageUrl = '';
@@ -80,6 +89,7 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
   }
 
   Future<bool> deleteItem(InventoryItem item) async {
+    if (!canWrite) { emit(state.copyWith(error: 'Read-only access.')); return false; }
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
       await _catalog.deleteItem(spreadsheetId, tab, item);
@@ -98,6 +108,7 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
     required DateTime damagedDate,
     String details = '',
   }) async {
+    if (!canWrite) { emit(state.copyWith(error: 'Read-only access.')); return false; }
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
       await _catalog.registerDamage(
@@ -125,6 +136,7 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
     required String borrower,
     DateTime? expectedReturn,
   }) async {
+    if (!canWrite) { emit(state.copyWith(error: 'Read-only access.')); return false; }
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
       await _issues.issue(
@@ -146,6 +158,7 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
   }
 
   Future<bool> addQty(InventoryItem item, int extra) async {
+    if (!canWrite) { emit(state.copyWith(error: 'Read-only access.')); return false; }
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
       await _catalog.addQty(spreadsheetId, tab, item, extra);

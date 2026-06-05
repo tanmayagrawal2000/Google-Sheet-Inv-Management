@@ -7,7 +7,8 @@ import '../../../core/theme/theme_cubit.dart';
 import '../../../shared/cubit/data_state.dart';
 import '../../../shared/models/room.dart';
 import '../../../shared/widgets/data_view.dart';
-import '../../auth/cubit/auth_cubit.dart';
+import '../../auth/cubit/user_session_cubit.dart';
+import '../../auth/data/user_repository.dart';
 import '../../inventory/data/sheets_repository.dart';
 import '../cubit/rooms_cubit.dart';
 import '../data/drive_repository.dart';
@@ -52,7 +53,11 @@ class RoomsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => RoomsCubit(getIt<DriveRepository>(), getIt<SheetsRepository>())..load(),
+      create: (_) => RoomsCubit(
+            getIt<DriveRepository>(),
+            getIt<SheetsRepository>(),
+            getIt<UserRepository>(),
+          )..load(),
       child: const _RoomsView(),
     );
   }
@@ -72,10 +77,23 @@ class _RoomsView extends StatelessWidget {
             onPressed: () => context.read<RoomsCubit>().load(),
             icon: const Icon(Icons.refresh),
           ),
+          // Manage Users — admin only
+          BlocBuilder<UserSessionCubit, UserSessionState>(
+            builder: (context, sessionState) {
+              if (sessionState.session?.isAdmin ?? false) {
+                return IconButton(
+                  tooltip: 'Manage Users',
+                  onPressed: () => context.push('/users'),
+                  icon: const Icon(Icons.manage_accounts_outlined),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           _ThemeSwitcher(),
           IconButton(
             tooltip: 'Sign out',
-            onPressed: () => context.read<AuthCubit>().signOut(),
+            onPressed: () => context.read<UserSessionCubit>().logout(),
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -92,7 +110,16 @@ class _RoomsView extends StatelessWidget {
             onRetry: () => context.read<RoomsCubit>().load(),
             isEmpty: (rooms) => rooms.isEmpty,
             emptyMessage: 'No categories yet.\nTap "Add category" to create your first.',
-            builder: (context, rooms) => _CategoryGrid(rooms: rooms),
+            builder: (context, rooms) {
+              final session =
+                  context.watch<UserSessionCubit>().state.session;
+              final visible = session == null
+                  ? rooms
+                  : rooms
+                      .where((r) => session.canRead(r.name))
+                      .toList();
+              return _CategoryGrid(rooms: visible);
+            },
           );
         },
       ),

@@ -1,8 +1,11 @@
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../features/auth/cubit/user_management_cubit.dart';
+import '../../features/auth/cubit/user_session_cubit.dart';
 import '../../features/auth/data/auth_service.dart';
 import '../../features/auth/data/secure_token_store.dart';
+import '../../features/auth/data/user_repository.dart';
 import '../../features/inventory/data/catalog_repository.dart';
 import '../../features/inventory/data/damage_repository.dart';
 import '../../features/inventory/data/sheets_repository.dart';
@@ -27,5 +30,11 @@ void configureDependencies(SharedPreferences prefs) {
     ..registerLazySingleton<IssueRepository>(() => IssueRepository(getIt()))
     ..registerLazySingleton<DamageRepository>(() => DamageRepository(getIt()))
     ..registerLazySingleton<CatalogRepository>(
-        () => CatalogRepository(getIt(), getIt(), getIt()));
+        () => CatalogRepository(getIt(), getIt(), getIt()))
+    ..registerLazySingleton<UserRepository>(
+        () => UserRepository(getIt(), getIt()))
+    ..registerLazySingleton<UserSessionCubit>(
+        () => UserSessionCubit(getIt()))
+    ..registerFactory<UserManagementCubit>(
+        () => UserManagementCubit(getIt()));
 }

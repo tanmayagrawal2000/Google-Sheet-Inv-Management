@@ -2,13 +2,16 @@ import 'package:bloc/bloc.dart';
 
 import '../../../core/errors/failures.dart';
 import '../../../shared/cubit/data_state.dart';
+import '../../auth/data/user_repository.dart';
 import '../data/catalog_repository.dart';
 
 /// Lists the category tabs within a single room (workbook) and creates new ones.
 class RoomCubit extends Cubit<DataState<List<String>>> {
-  RoomCubit(this._catalog, this.spreadsheetId) : super(const DataState<List<String>>());
+  RoomCubit(this._catalog, this._userRepo, this.spreadsheetId)
+      : super(const DataState<List<String>>());
 
   final CatalogRepository _catalog;
+  final UserRepository _userRepo;
   final String spreadsheetId;
 
   Future<void> load() async {
@@ -19,11 +22,14 @@ class RoomCubit extends Cubit<DataState<List<String>>> {
     ));
     try {
       final tabs = await _catalog.listCategories(spreadsheetId);
-      emit(state.copyWith(status: DataStatus.ready, data: tabs, refreshing: false));
+      emit(state.copyWith(
+          status: DataStatus.ready, data: tabs, refreshing: false));
     } on AppFailure catch (e) {
-      emit(state.copyWith(status: DataStatus.error, error: e.message, refreshing: false));
+      emit(state.copyWith(
+          status: DataStatus.error, error: e.message, refreshing: false));
     } catch (e) {
-      emit(state.copyWith(status: DataStatus.error, error: '$e', refreshing: false));
+      emit(state.copyWith(
+          status: DataStatus.error, error: '$e', refreshing: false));
     }
   }
 
@@ -46,6 +52,8 @@ class RoomCubit extends Cubit<DataState<List<String>>> {
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
       await _catalog.renameCategory(spreadsheetId, oldTitle, newTitle);
+      // Sync the column header in the Users sheet.
+      await _userRepo.renameCategoryColumn(oldTitle, newTitle);
       await load();
       return true;
     } on AppFailure catch (e) {

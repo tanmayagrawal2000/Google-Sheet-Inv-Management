@@ -1,6 +1,14 @@
 class SheetSchema {
   SheetSchema._();
 
+  // ── Users spreadsheet (custom auth) ────────────────────────────────────────
+  static const String usersSpreadsheetName = 'Users';
+  static const String usersSheetTab = 'Users';
+  static const int usersColUsername = 0; // A
+  static const int usersColPassword = 1; // B
+  static const int usersColAdmin = 2;    // C
+  static const int usersFirstCatCol = 3; // D onwards — one column per category
+
   static const String issueLogTab = '_IssueLog';
   static const String damageLogTab = '_DamageLog';
 

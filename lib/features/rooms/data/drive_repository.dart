@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:googleapis/drive/v3.dart' as drive;
 
 import '../../../core/config/app_config.dart';
+import '../../../core/config/sheet_schema.dart';
 import '../../../core/errors/failures.dart';
 import '../../../core/network/google_apis.dart';
 import '../../../shared/models/room.dart';
@@ -52,6 +53,7 @@ class DriveRepository {
       $fields: 'files(id,name,modifiedTime)',
     );
     return (result.files ?? [])
+        .where((f) => f.name != SheetSchema.usersSpreadsheetName)
         .map((f) => Room(
               id: f.id!,
               name: f.name ?? '(untitled)',

@@ -7,6 +7,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_cubit.dart';
 import 'features/auth/cubit/auth_cubit.dart';
+import 'features/auth/cubit/user_session_cubit.dart';
 import 'features/auth/data/auth_service.dart';
 
 class InventoryApp extends StatefulWidget {
@@ -18,13 +19,15 @@ class InventoryApp extends StatefulWidget {
 
 class _InventoryAppState extends State<InventoryApp> {
   late final AuthCubit _authCubit;
+  late final UserSessionCubit _sessionCubit;
   late final GoRouter _router;
 
   @override
   void initState() {
     super.initState();
     _authCubit = AuthCubit(getIt<AuthService>())..bootstrap();
-    _router = buildRouter(_authCubit);
+    _sessionCubit = getIt<UserSessionCubit>();
+    _router = buildRouter(_authCubit, _sessionCubit);
   }
 
   @override
@@ -38,6 +41,7 @@ class _InventoryAppState extends State<InventoryApp> {
     return MultiBlocProvider(
       providers: [
         BlocProvider.value(value: _authCubit),
+        BlocProvider.value(value: _sessionCubit),
         BlocProvider(create: (_) => getIt<ThemeCubit>()),
       ],
       child: BlocBuilder<ThemeCubit, ThemeMode>(

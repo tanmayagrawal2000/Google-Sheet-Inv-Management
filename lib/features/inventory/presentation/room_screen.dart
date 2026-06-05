@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injector.dart';
 import '../../../shared/cubit/data_state.dart';
 import '../../../shared/widgets/data_view.dart';
+import '../../auth/cubit/user_session_cubit.dart';
+import '../../auth/data/user_repository.dart';
 import '../cubit/room_cubit.dart';
 import '../data/catalog_repository.dart';
 
@@ -18,7 +20,11 @@ class RoomScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => RoomCubit(getIt<CatalogRepository>(), spreadsheetId)..load(),
+      create: (_) => RoomCubit(
+            getIt<CatalogRepository>(),
+            getIt<UserRepository>(),
+            spreadsheetId,
+          )..load(),
       child: _RoomView(roomName: roomName, spreadsheetId: spreadsheetId),
     );
   }
@@ -72,13 +78,29 @@ class _RoomView extends StatelessWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addCategory(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add section'),
-      ),
+      floatingActionButton: Builder(builder: (context) {
+        final canWrite = context
+                .watch<UserSessionCubit>()
+                .state
+                .session
+                ?.canWrite(roomName) ??
+            true;
+        return canWrite
+            ? FloatingActionButton.extended(
+                onPressed: () => _addCategory(context),
+                icon: const Icon(Icons.add),
+                label: const Text('Add section'),
+              )
+            : const SizedBox.shrink();
+      }),
       body: BlocBuilder<RoomCubit, DataState<List<String>>>(
         builder: (context, state) {
+          final canWrite = context
+                  .watch<UserSessionCubit>()
+                  .state
+                  .session
+                  ?.canWrite(roomName) ??
+              true;
           return DataView<List<String>>(
             state: state,
             onRetry: () => context.read<RoomCubit>().load(),
@@ -92,16 +114,24 @@ class _RoomView extends StatelessWidget {
                 child: ListTile(
                   leading: _SectionAvatar(name: tabs[i]),
                   title: Text(tabs[i]),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (v) {
-                      if (v == 'rename') _renameCategory(context, tabs[i]);
-                      if (v == 'delete') _deleteCategory(context, tabs[i]);
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'rename', child: Text('Rename')),
-                      PopupMenuItem(value: 'delete', child: Text('Delete')),
-                    ],
-                  ),
+                  trailing: canWrite
+                      ? PopupMenuButton<String>(
+                          onSelected: (v) {
+                            if (v == 'rename') {
+                              _renameCategory(context, tabs[i]);
+                            }
+                            if (v == 'delete') {
+                              _deleteCategory(context, tabs[i]);
+                            }
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                                value: 'rename', child: Text('Rename')),
+                            PopupMenuItem(
+                                value: 'delete', child: Text('Delete')),
+                          ],
+                        )
+                      : null,
                   onTap: () => context.push(
                     '/room/$spreadsheetId/category/${Uri.encodeComponent(tabs[i])}'
                     '?name=${Uri.encodeComponent(roomName)}',

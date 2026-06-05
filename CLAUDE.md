@@ -43,7 +43,7 @@ lib/
     rooms/        DriveRepository, RoomsCubit, RoomsScreen
     inventory/    SheetsRepository, CatalogRepository, DamageRepository,
                   RoomCubit, CategoryCubit, ItemDetailCubit, DamageLogCubit,
-                  screens + widgets (incl. RepairItemSheet, ReturnItemSheet)
+                  screens + widgets (incl. RepairItemSheet, ReturnItemSheet, DamageItemSheet)
     issues/       IssueRepository, IssuesCubit, IssuesScreen
   shared/
     models/       Room, InventoryItem, IssueRecord, DamageRecord (all Equatable)
@@ -57,9 +57,9 @@ lib/
 |---|---|---|
 | **Category** | Spreadsheet (workbook) | In "School Inventory" Drive folder; name may have emoji prefix e.g. `"🎵 Music"` |
 | **Section** | Sheet tab | Visible tab inside a category, e.g. "Piano" |
-| **Item** | Row in a section tab | 10 data columns + 4 stat columns |
-| **Issue log** | `_IssueLog` tab | Append-only; one row per issue/partial-return/full-return |
-| **Damage log** | `_DamageLog` tab | Append-only; one row per damage/partial-repair/full-repair |
+| **Item** | Row in a section tab | 10 data columns + 4 stat columns + summary block |
+| **Issue log** | `_IssueLog` tab | Append-only; one row per issue / partial-return / full-return |
+| **Damage log** | `_DamageLog` tab | Append-only; one row per damage / partial-repair / full-repair |
 
 ## Item column layout
 
@@ -78,7 +78,7 @@ lib/
 | I | 8 | Bill No |
 | J | 9 | Bill Date |
 
-**Stat columns K–N (indices 10–13) — written with static values by the app after every mutation, never read back:**
+**Stat columns K–N (indices 10–13) — written with static values, never read back:**
 
 | Col | Index | Value |
 |---|---|---|
@@ -87,22 +87,25 @@ lib/
 | M | 12 | Damaged |
 | N | 13 | Available (= Total − Issued − Damaged) |
 
-`writeItemFormulas(spreadsheetId, tab, rowIndex, quantity)` writes `[qty, 0, 0, qty]` when an item is first added. `batchWriteItemStats` / `refreshSheetStats` pushes the current in-memory counts to K–N after every mutation (issue, return, damage, repair, add qty). The Sheets API does **not** trigger cross-tab SUMPRODUCT recalculation reliably, so static values are used instead of formulas.
+**Summary block** — always `SheetSchema.summaryLabelCol` / `summaryValueCol` (computed as `formulaColAvailable + 2/3`; currently P–Q). Written once at section creation, never re-written. Uses whole-column `=SUM(K:K)` formulas (unlimited rows, same-sheet so Sheets recalculates reliably). Enclosed in a thick black border with thin inner borders. `appendRow` uses `OVERWRITE` (not `INSERT_ROWS`) so summary rows are never displaced.
 
-Always use `SheetSchema.*` constants — never hard-code column positions.
+`writeItemFormulas(spreadsheetId, tab, rowIndex, quantity)` writes `[qty, 0, 0, qty]` when an item is first added. `refreshSheetStats` → `batchWriteItemStats` pushes in-memory counts to K–N after every mutation. Cross-tab SUMPRODUCT is unreliable via the API; static values are used instead.
+
+Always use `SheetSchema.*` constants — never hard-code column positions. `summaryLabelCol` / `summaryValueCol` are `get` properties (not `const`) so they shift automatically if columns are added.
 
 ## Log tab schemas
 
 **`_IssueLog`:** `LogId, CategoryTab, ItemId, ItemDetail, Quantity, Borrower, DateIssued, ExpectedReturn, DateReturned, Status`
-- Status values: `Open` / `Returned` (capitalised)
-- `IssueRecord.isOpen` is case-insensitive (`status.toLowerCase() != "returned"`)
-- Status column has a dropdown (data validation) applied per-row when each issue is appended
-- Formatting: bold header row, yellow Status cell when `Open`, green when `Returned`
+- Status values: `Open` / `Returned` (capitalised); parsing is case-insensitive
+- Status dropdown applied per-row on append; `formatIssueLog` (idempotent) re-applied on each issue write
+- Formatting: bold header, yellow Status cell = `Open`, green = `Returned`
 
-**`_DamageLog`:** `LogId, CategoryTab, ItemId, ItemDetail, Quantity, DamagedDate, Details, Status`
-- Status values: `Damaged` / `Repaired` (capitalised)
-- `damagedByItem` counts only rows where `status == "Damaged"`
-- Formatting: bold header row only
+**`_DamageLog`:** `LogId, CategoryTab, ItemId, ItemDetail, Quantity, DamagedDate, Details, RepairDate, Status`
+- Status values: `Damaged` / `Repaired` (capitalised); parsing is case-insensitive
+- `RepairDate` written when repair is recorded; empty for unrepaired rows
+- Status dropdown applied per-row on append; `formatDamageLog` (idempotent) re-applied on each damage write
+- Formatting: bold header, red Status cell = `Damaged`, green = `Repaired`
+- `damagedByItem` counts only rows where `Status == "Damaged"`
 
 ## In-app derived counts
 
@@ -113,8 +116,8 @@ Always use `SheetSchema.*` constants — never hard-code column positions.
 
 ## Mutations and sheet stat refresh
 
-After every mutation that changes counts, the cubit calls `_refreshSheetStats` which:
-1. `loadCategory` → fresh in-memory items with correct counts
+After every mutation that changes counts, the cubit calls `_refreshSheetStats`:
+1. `loadCategory` → fresh items with correct counts
 2. `refreshSheetStats` → `batchWriteItemStats` writes K–N for all items in that section
 
 | Cubit | Mutations that refresh stats |
@@ -122,30 +125,32 @@ After every mutation that changes counts, the cubit calls `_refreshSheetStats` w
 | `CategoryCubit` | `issue`, `registerDamage`, `addQty` |
 | `IssuesCubit` | `returnIssue` (uses `record.categoryTab`) |
 | `DamageLogCubit` | `repairDamage` (uses `record.categoryTab`) |
-| `ItemDetailCubit` | `repairDamage` |
+| `ItemDetailCubit` | `returnIssue`, `repairDamage` |
 
 ## Partial return / partial repair flow
 
-**Partial return** (`IssueRepository.partialReturn`): reduce existing open row's `Quantity` by returnedQty (stays `Open`) + append new `Returned` row for returnedQty. Both writes in parallel.
+**Partial return** (`IssueRepository.partialReturn`): parallel writes — reduce existing open row's `Quantity` by returnedQty (stays `Open`) + append new `Returned` row for returnedQty.
 
-**Partial repair** (`DamageRepository.partialRepair`): reduce existing `Damaged` row's `Quantity` by repairedQty (stays `Damaged`) + append new `Repaired` row for repairedQty. Both writes in parallel.
+**Partial repair** (`DamageRepository.partialRepair`): parallel writes — reduce existing `Damaged` row's `Quantity` by repairedQty (stays `Damaged`) + append new `Repaired` row with `RepairDate = now`.
 
 ## Delete section flow
 
 `SheetsRepository.deleteSection`: 2 round trips.
-1. Parallel: `spreadsheets.get` (sheetIds) + `batchGet` (read both log tabs)
-2. Single `batchUpdate`: delete matching rows from `_IssueLog` (filtered by `CategoryTab`) + `_DamageLog` + delete section tab
+1. Parallel: `spreadsheets.get` (sheetIds) + `batchGet` (both log tabs)
+2. Single `batchUpdate`: delete matching log rows (filtered by `CategoryTab`, high→low) + delete section tab
 
 ## Sheet initialization
 
-On `RoomsCubit.createRoom`, `SheetsRepository.initializeSpreadsheet` runs immediately after the Drive file is created:
-1. Bolds header / un-bolds data rows / freezes row 1 on all existing section tabs
-2. Creates `_IssueLog` with headers + bold header + Status dropdown + Open/Returned conditional colours
-3. Creates `_DamageLog` with headers + bold header
+On `RoomsCubit.createRoom`, `SheetsRepository.initializeSpreadsheet` runs immediately:
+1. Bold header / un-bold data / freeze row 1 on all existing section tabs + write summary block
+2. `ensureIssueLog` → creates `_IssueLog` with headers + `formatIssueLog` (bold header + conditional colours)
+3. `ensureDamageLog` → creates `_DamageLog` with headers + `formatDamageLog` (bold header + conditional colours)
 
-**Bold inheritance fix**: after every `appendRow`, `unboldDataRows` is called. Google Sheets `values.append` copies the format of the row above, so appended rows inherit the bold header — this resets them to non-bold.
+`createCategory` (Add section): writes item headers + formula headers + summary block + applies header format.
 
-`ensureHeaders` is called before every `appendRow` in `addItem` to guarantee row 1 is a header row (handles renamed Sheet1 tabs that were never initialized).
+**Bold inheritance fix**: `appendRow` uses `OVERWRITE` (no physical row insertion). `unboldDataRows` is also called after every append as a safety measure — Sheets can still inherit bold from the row above in some cases.
+
+`ensureHeaders` is called before every `appendRow` in `addItem` to guarantee row 1 is a header row.
 
 ## State management
 
@@ -156,19 +161,19 @@ Cubits (flutter_bloc) wrap `DataState<T>` with `status`, `data`, `error`, `refre
 
 ## Dependency injection
 
-`configureDependencies(SharedPreferences prefs)` called from `main()` after `await SharedPreferences.getInstance()`. All singletons registered in `lib/core/di/injector.dart`. Cubits are NOT in get_it.
+`configureDependencies(SharedPreferences prefs)` called from `main()` after `await SharedPreferences.getInstance()`. All singletons in `lib/core/di/injector.dart`. Cubits are NOT in get_it.
 
 ## Auth flow
 
 `GsiAuthService` (`google_sign_in_all_platforms`):
-- **Desktop / Web**: Web application OAuth client. `clientId` required via `--dart-define=GOOGLE_DESKTOP_CLIENT_ID`. Desktop also needs `GOOGLE_DESKTOP_CLIENT_SECRET`.
+- **Desktop / Web**: Web application OAuth client. `clientId` via `--dart-define=GOOGLE_DESKTOP_CLIENT_ID`. Desktop also needs `GOOGLE_DESKTOP_CLIENT_SECRET`.
 - **Mobile**: native account picker. Same Web client ID via `--dart-define=GOOGLE_MOBILE_CLIENT_ID`. No secret needed.
 
 Tokens persisted via `flutter_secure_storage`. go_router redirect guards all routes via `AuthCubit.state.status`.
 
 ## Google API calls
 
-`GoogleApis` → fresh `DriveApi` / `SheetsApi` per call → `BackoffClient` wraps HTTP (retries 429/5xx, exponential backoff + jitter, honors `Retry-After`). Sheets quota: 60 req/min per user.
+`GoogleApis` → fresh `DriveApi` / `SheetsApi` per call → `BackoffClient` (retries 429/5xx, exponential backoff + jitter, honors `Retry-After`). Sheets quota: 60 req/min per user.
 
 ## Routes
 
@@ -179,28 +184,31 @@ Tokens persisted via `flutter_secure_storage`. go_router redirect guards all rou
 | `/` | `RoomsScreen` — category grid with emoji/initial avatars |
 | `/room/:id` | `RoomScreen` — section list; "Logs" popup → Issue Log or Damage Log |
 | `/room/:id/category/:tab` | `CategoryScreen` — items with filterable Total/Issued/Damaged/Available summary bar |
-| `/room/:id/category/:tab/item` | `ItemDetailScreen` — detail + issue history + damage history with Repair (`extra: InventoryItem`, `tab` in path) |
-| `/room/:id/log` | `IssuesScreen` — issue/return log with partial return support |
-| `/room/:id/damage-log` | `DamageLogScreen` — damage log with partial repair support |
+| `/room/:id/category/:tab/item` | `ItemDetailScreen` — detail + tappable issue/damage history cards (`extra: InventoryItem`, `tab` in path) |
+| `/room/:id/log` | `IssuesScreen` — issue/return log with partial return |
+| `/room/:id/damage-log` | `DamageLogScreen` — damage/repair log with partial repair |
 
 ## CategoryScreen filter bar
 
 Tapping a stat in the summary bar filters the item list:
-- **Total** → all items (resets filter)
-- **Issued** → items where `issued > 0`
-- **Damaged** → items where `damaged > 0`
-- **Available** → items where `available > 0`
+- **Total** → all items (resets filter); **Issued** → `issued > 0`; **Damaged** → `damaged > 0`; **Available** → `available > 0`
 
-Active filter shown with tinted background + coloured underline. Tapping the active stat again resets to all.
+Active filter: tinted background + coloured underline. Tap again to reset.
 
-## Item card actions (⋮ menu)
+## Item card ⋮ menu
 
 | Action | Notes |
 |---|---|
 | Issue | Disabled (greyed) when `available == 0` |
-| Add qty | Dialog to add stock; updates Quantity in sheet + refreshes K–N |
+| Add qty | Adds stock; updates Quantity in sheet + refreshes K–N |
 | Mark damaged | Opens `DamageItemSheet`; appends to `_DamageLog` |
-| Delete | Confirmation dialog; deletes the item row |
+| Delete | Removes the item row |
+
+## Item / log card interactions
+
+**Issue cards** (in `ItemDetailScreen` and `IssuesScreen`): tap card → `ReturnItemSheet` (Return All or Return Partial).
+**Damage cards** (in `ItemDetailScreen` and `DamageLogScreen`): tap card → `RepairItemSheet` (Repair All or Repair Partial).
+Both sheets show full record details. Returned / repaired records show a "Close" button only.
 
 ## Key packages
 
@@ -221,13 +229,16 @@ Active filter shown with tinted background + coloured underline. Tapping the act
 ## Conventions
 
 - **No hard-coded column indices** — always use `SheetSchema.*` constants.
+- **`summaryLabelCol` / `summaryValueCol` are `get` (not `const`)** — they auto-shift when columns are added.
 - **Credentials via `--dart-define`** — never embed in source; read via `AppConfig`.
 - **`AuthService` is the only dependency on the sign-in package** — keep features decoupled.
 - **Models are immutable Equatable** — use `copyWith` for mutations.
 - **Emit `refreshing: true` before every mutation** — `DataView` shows `LinearProgressIndicator` immediately.
 - **Stat columns (K–N) are write-only** — app always derives counts from raw log rows, never reads K–N back.
+- **`appendRow` uses `OVERWRITE`** — never `INSERT_ROWS`; physical row insertion displaces the summary block.
 - **Category names store emoji prefix** — e.g. `"🎵 Music"`. Use `_leadingEmoji()` / `_displayName()` in `rooms_screen.dart` to split.
 - **Colors**: Issued = `scheme.tertiary`, Damaged = `scheme.error`, Available = `scheme.primary`.
-- **Formatting failures are silently swallowed** — sheet formatting is cosmetic and must never break app flow.
+- **Formatting methods are idempotent** — `formatIssueLog` / `formatDamageLog` delete existing conditional rules before re-adding; safe to call on every write.
+- **Formatting failures are silently swallowed** — sheet formatting is cosmetic, must never break app flow.
 - **Status values are capitalised** — `"Open"`, `"Returned"`, `"Damaged"`, `"Repaired"`. Parsing is case-insensitive for backward compatibility.
-- **Bold inheritance**: always call `unboldDataRows` after `appendRow` — Sheets copies the header's bold to the appended row.
+- **Bold inheritance**: call `unboldDataRows` after every `appendRow`.
