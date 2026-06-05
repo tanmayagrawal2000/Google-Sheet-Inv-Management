@@ -110,6 +110,7 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
         details: details,
       );
       await load();
+      await _refreshSheetStats();
       return true;
     } catch (e) {
       emit(state.copyWith(error: '$e', refreshing: false));
@@ -136,10 +137,32 @@ class CategoryCubit extends Cubit<DataState<CategoryData>> {
         expectedReturn: expectedReturn,
       );
       await load();
+      await _refreshSheetStats();
       return true;
     } catch (e) {
       emit(state.copyWith(error: '$e', refreshing: false));
       return false;
     }
+  }
+
+  Future<bool> addQty(InventoryItem item, int extra) async {
+    emit(state.copyWith(refreshing: true, clearError: true));
+    try {
+      await _catalog.addQty(spreadsheetId, tab, item, extra);
+      await load();
+      await _refreshSheetStats();
+      return true;
+    } catch (e) {
+      emit(state.copyWith(error: '$e', refreshing: false));
+      return false;
+    }
+  }
+
+  /// Pushes the current in-memory counts to the sheet's K–N cells so they
+  /// stay accurate regardless of whether Sheets recalculates cross-tab formulas.
+  Future<void> _refreshSheetStats() async {
+    final items = state.data?.items;
+    if (items == null || items.isEmpty) return;
+    await _catalog.refreshSheetStats(spreadsheetId, tab, items);
   }
 }

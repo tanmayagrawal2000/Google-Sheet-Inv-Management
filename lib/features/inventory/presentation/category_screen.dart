@@ -212,10 +212,12 @@ class _ItemCard extends StatelessWidget {
             ),
             PopupMenuButton<String>(
               onSelected: (v) {
-                if (v == 'delete') _confirmDelete(context);
+                if (v == 'addqty') _addQty(context);
                 if (v == 'damaged') _markDamaged(context);
+                if (v == 'delete') _confirmDelete(context);
               },
               itemBuilder: (_) => const [
+                PopupMenuItem(value: 'addqty', child: Text('Add qty')),
                 PopupMenuItem(value: 'damaged', child: Text('Mark damaged')),
                 PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
@@ -241,6 +243,43 @@ class _ItemCard extends StatelessWidget {
       borrower: result.borrower,
       expectedReturn: result.expectedReturn,
     );
+  }
+
+  Future<void> _addQty(BuildContext context) async {
+    final cubit = context.read<CategoryCubit>();
+    final controller = TextEditingController();
+    final extra = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add quantity'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Units to add',
+            helperText: 'Current total: ${item.quantity}',
+          ),
+          onSubmitted: (_) {
+            final v = int.tryParse(controller.text.trim());
+            if (v != null && v > 0) Navigator.pop(ctx, v);
+          },
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final v = int.tryParse(controller.text.trim());
+              if (v != null && v > 0) Navigator.pop(ctx, v);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (extra != null) await cubit.addQty(item, extra);
   }
 
   Future<void> _markDamaged(BuildContext context) async {

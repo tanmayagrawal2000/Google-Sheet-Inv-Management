@@ -5,6 +5,7 @@ import '../../../shared/models/damage_record.dart';
 import '../../../shared/models/issue_record.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../issues/data/issue_repository.dart';
+import '../data/catalog_repository.dart';
 import '../data/damage_repository.dart';
 
 class ItemDetailData {
@@ -22,14 +23,18 @@ class ItemDetailData {
 class ItemDetailCubit extends Cubit<DataState<ItemDetailData>> {
   ItemDetailCubit(
     this._issues,
-    this._damage, {
+    this._damage,
+    this._catalog, {
     required this.spreadsheetId,
+    required this.tab,
     required this.item,
   }) : super(const DataState());
 
   final IssueRepository _issues;
   final DamageRepository _damage;
+  final CatalogRepository _catalog;
   final String spreadsheetId;
+  final String tab;
   final InventoryItem item;
 
   Future<void> load() async {
@@ -60,5 +65,32 @@ class ItemDetailCubit extends Cubit<DataState<ItemDetailData>> {
     } catch (e) {
       emit(state.copyWith(status: DataStatus.error, error: '$e'));
     }
+  }
+
+  /// [repairedQty] == record.quantity → full repair.
+  /// [repairedQty] <  record.quantity → partial repair (damaged row qty
+  ///   reduced, new Repaired row appended).
+  Future<bool> repairDamage(DamageRecord record, int repairedQty) async {
+    emit(state.copyWith(refreshing: true, clearError: true));
+    try {
+      if (repairedQty >= record.quantity) {
+        await _damage.markRepaired(spreadsheetId, record);
+      } else {
+        await _damage.partialRepair(spreadsheetId, record, repairedQty);
+      }
+      await load();
+      await _refreshSectionStats();
+      return true;
+    } catch (e) {
+      emit(state.copyWith(error: '$e', refreshing: false));
+      return false;
+    }
+  }
+
+  Future<void> _refreshSectionStats() async {
+    try {
+      final data = await _catalog.loadCategory(spreadsheetId, tab);
+      await _catalog.refreshSheetStats(spreadsheetId, tab, data.items);
+    } catch (_) {}
   }
 }

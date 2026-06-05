@@ -12,6 +12,7 @@ class DamageRecord extends Equatable {
     required this.quantity,
     required this.damagedDate,
     this.details = '',
+    this.status = SheetSchema.damageStatusDamaged,
     this.rowIndex,
   });
 
@@ -22,12 +23,36 @@ class DamageRecord extends Equatable {
   final int quantity;
   final DateTime damagedDate;
   final String details;
+  final String status;
   final int? rowIndex;
+
+  bool get isDamaged =>
+      status.toLowerCase() != SheetSchema.damageStatusRepaired.toLowerCase();
 
   static final DateFormat _fmt = DateFormat('yyyy-MM-dd');
   static String _date(DateTime d) => _fmt.format(d);
   static DateTime? _parse(String s) =>
       s.trim().isEmpty ? null : DateTime.tryParse(s.trim());
+
+  static String _normalizeStatus(String raw) {
+    final v = raw.trim().toLowerCase();
+    if (v == SheetSchema.damageStatusRepaired.toLowerCase()) {
+      return SheetSchema.damageStatusRepaired;
+    }
+    return SheetSchema.damageStatusDamaged;
+  }
+
+  DamageRecord copyWith({String? status}) => DamageRecord(
+        logId: logId,
+        categoryTab: categoryTab,
+        itemId: itemId,
+        itemDetail: itemDetail,
+        quantity: quantity,
+        damagedDate: damagedDate,
+        details: details,
+        status: status ?? this.status,
+        rowIndex: rowIndex,
+      );
 
   List<Object?> toRow() {
     final row = List<Object?>.filled(SheetSchema.damageLogHeaders.length, '');
@@ -38,6 +63,7 @@ class DamageRecord extends Equatable {
     row[SheetSchema.damageLogColQuantity] = quantity;
     row[SheetSchema.damageLogColDamagedDate] = _date(damagedDate);
     row[SheetSchema.damageLogColDetails] = details;
+    row[SheetSchema.damageLogColStatus] = status;
     return row;
   }
 
@@ -54,11 +80,12 @@ class DamageRecord extends Equatable {
       quantity: int.tryParse(cell(SheetSchema.damageLogColQuantity)) ?? 0,
       damagedDate: date,
       details: cell(SheetSchema.damageLogColDetails),
+      status: _normalizeStatus(cell(SheetSchema.damageLogColStatus)),
       rowIndex: rowIndex,
     );
   }
 
   @override
   List<Object?> get props =>
-      [logId, categoryTab, itemId, itemDetail, quantity, damagedDate, details, rowIndex];
+      [logId, categoryTab, itemId, itemDetail, quantity, damagedDate, details, status, rowIndex];
 }

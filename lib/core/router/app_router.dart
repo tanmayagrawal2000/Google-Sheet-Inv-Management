@@ -59,6 +59,7 @@ GoRouter buildRouter(AuthCubit authCubit) {
         path: '/room/:id/category/:tab/item',
         builder: (context, state) => ItemDetailScreen(
           spreadsheetId: state.pathParameters['id']!,
+          tab: Uri.decodeComponent(state.pathParameters['tab']!),
           item: state.extra as InventoryItem,
         ),
       ),

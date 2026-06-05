@@ -56,4 +56,19 @@ class RoomCubit extends Cubit<DataState<List<String>>> {
       return false;
     }
   }
+
+  Future<bool> deleteCategory(String title) async {
+    emit(state.copyWith(refreshing: true, clearError: true));
+    try {
+      await _catalog.deleteCategory(spreadsheetId, title);
+      await load();
+      return true;
+    } on AppFailure catch (e) {
+      emit(state.copyWith(error: e.message, refreshing: false));
+      return false;
+    } catch (e) {
+      emit(state.copyWith(error: '$e', refreshing: false));
+      return false;
+    }
+  }
 }

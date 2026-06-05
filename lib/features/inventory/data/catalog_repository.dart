@@ -40,6 +40,16 @@ class CatalogRepository {
   Future<void> renameCategory(String spreadsheetId, String oldTitle, String newTitle) =>
       _sheets.renameCategory(spreadsheetId, oldTitle, newTitle);
 
+  Future<void> deleteCategory(String spreadsheetId, String title) =>
+      _sheets.deleteSection(spreadsheetId, title);
+
+  Future<void> addQty(
+      String spreadsheetId, String tab, InventoryItem item, int extra) async {
+    if (item.rowIndex == null) throw StateError('Row index unknown.');
+    final newQty = item.quantity + extra;
+    await _sheets.updateItemQuantity(spreadsheetId, tab, item.rowIndex!, newQty);
+  }
+
   /// Loads all items in [tab] with `issued`/`available` filled from the log.
   Future<CategoryData> loadCategory(String spreadsheetId, String tab) async {
     final range = A1.wholeTab(tab, SheetSchema.itemHeaders.length);
@@ -114,12 +124,19 @@ class CatalogRepository {
       SheetSchema.itemHeaders.length,
     );
     if (rowIndex != null) {
-      await _sheets.writeItemFormulas(spreadsheetId, tab, rowIndex);
+      await _sheets.writeItemFormulas(spreadsheetId, tab, rowIndex, item.quantity);
     }
     // Appended rows inherit the bold header format — reset data rows to normal.
     await _sheets.unboldDataRows(spreadsheetId, tab);
     return item;
   }
+
+  /// Writes current in-app counts (Total/Issued/Damaged/Available) to the
+  /// K–N cells for every item. Called after mutations so the sheet stays
+  /// accurate without relying on cross-sheet SUMPRODUCT auto-recalculation.
+  Future<void> refreshSheetStats(
+          String spreadsheetId, String tab, List<InventoryItem> items) =>
+      _sheets.batchWriteItemStats(spreadsheetId, tab, items);
 
   Future<void> deleteItem(String spreadsheetId, String tab, InventoryItem item) async {
     if (item.rowIndex == null) throw StateError('Cannot delete item without a known row index.');

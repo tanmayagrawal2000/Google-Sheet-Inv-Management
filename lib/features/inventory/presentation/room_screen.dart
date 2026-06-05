@@ -72,9 +72,11 @@ class _RoomView extends StatelessWidget {
                   trailing: PopupMenuButton<String>(
                     onSelected: (v) {
                       if (v == 'rename') _renameCategory(context, tabs[i]);
+                      if (v == 'delete') _deleteCategory(context, tabs[i]);
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'rename', child: Text('Rename')),
+                      PopupMenuItem(value: 'delete', child: Text('Delete')),
                     ],
                   ),
                   onTap: () => context.push(
@@ -114,6 +116,27 @@ class _RoomView extends StatelessWidget {
     );
     if (newTitle == null || newTitle.trim().isEmpty || newTitle.trim() == oldTitle) return;
     await cubit.renameCategory(oldTitle, newTitle.trim());
+  }
+
+  Future<void> _deleteCategory(BuildContext context, String title) async {
+    final cubit = context.read<RoomCubit>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete "$title"?'),
+        content: const Text(
+            'This removes the section tab and deletes all its issue and damage log entries. This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok ?? false) await cubit.deleteCategory(title);
   }
 
   Future<void> _addCategory(BuildContext context) async {

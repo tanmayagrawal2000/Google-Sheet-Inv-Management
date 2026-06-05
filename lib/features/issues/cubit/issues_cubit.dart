@@ -3,14 +3,16 @@ import 'package:bloc/bloc.dart';
 import '../../../core/errors/failures.dart';
 import '../../../shared/cubit/data_state.dart';
 import '../../../shared/models/issue_record.dart';
+import '../../inventory/data/catalog_repository.dart';
 import '../data/issue_repository.dart';
 
 /// Loads the issue ledger for a room and handles returns.
 class IssuesCubit extends Cubit<DataState<List<IssueRecord>>> {
-  IssuesCubit(this._issues, this.spreadsheetId)
+  IssuesCubit(this._issues, this._catalog, this.spreadsheetId)
       : super(const DataState<List<IssueRecord>>());
 
   final IssueRepository _issues;
+  final CatalogRepository _catalog;
   final String spreadsheetId;
 
   Future<void> load() async {
@@ -30,11 +32,19 @@ class IssuesCubit extends Cubit<DataState<List<IssueRecord>>> {
     }
   }
 
-  Future<bool> returnIssue(IssueRecord record) async {
+  /// [returnedQty] == record.quantity → full return.
+  /// [returnedQty] <  record.quantity → partial return (open row qty reduced,
+  ///   a new Returned row appended for the returned portion).
+  Future<bool> returnIssue(IssueRecord record, int returnedQty) async {
     emit(state.copyWith(refreshing: true, clearError: true));
     try {
-      await _issues.markReturned(spreadsheetId, record);
+      if (returnedQty >= record.quantity) {
+        await _issues.markReturned(spreadsheetId, record);
+      } else {
+        await _issues.partialReturn(spreadsheetId, record, returnedQty);
+      }
       await load();
+      await _refreshSectionStats(record.categoryTab);
       return true;
     } catch (e) {
       emit(state.copyWith(error: '$e', refreshing: false));
@@ -51,6 +61,15 @@ class IssuesCubit extends Cubit<DataState<List<IssueRecord>>> {
     } catch (e) {
       emit(state.copyWith(error: '$e', refreshing: false));
       return false;
+    }
+  }
+
+  Future<void> _refreshSectionStats(String tab) async {
+    try {
+      final data = await _catalog.loadCategory(spreadsheetId, tab);
+      await _catalog.refreshSheetStats(spreadsheetId, tab, data.items);
+    } catch (_) {
+      // Stats refresh is best-effort — never block the return flow.
     }
   }
 }

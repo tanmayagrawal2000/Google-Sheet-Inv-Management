@@ -83,9 +83,8 @@ class SheetsRepository {
     await ensureDamageLog(spreadsheetId);
   }
 
-  /// Ensures the `_IssueLog` tab exists. When it creates the tab it also writes
-  /// headers, bolds the header row, adds an Open/Returned dropdown on the Status
-  /// column, and applies the status conditional colours.
+  /// Ensures the `_IssueLog` tab exists with headers and conditional colours.
+  /// The Status dropdown is applied per-row when each issue is appended.
   Future<void> ensureIssueLog(String spreadsheetId) async {
     final titles = await _allTabTitles(spreadsheetId);
     if (titles.contains(SheetSchema.issueLogTab)) return;
@@ -229,12 +228,15 @@ class SheetsRepository {
         ),
       ];
 
-  /// Open/Returned dropdown (data validation) on the Status column, rows 2+.
-  sheets.Request _statusDropdownRequest(int sheetId) => sheets.Request(
+  /// Open/Returned dropdown on a single Status cell at [rowIndex] (1-based).
+  /// Applied per-row after each append so empty rows never show the arrow.
+  sheets.Request _statusDropdownRequest(int sheetId, int rowIndex) =>
+      sheets.Request(
         setDataValidation: sheets.SetDataValidationRequest(
           range: sheets.GridRange(
             sheetId: sheetId,
-            startRowIndex: 1,
+            startRowIndex: rowIndex - 1,
+            endRowIndex: rowIndex,
             startColumnIndex: SheetSchema.logColStatus,
             endColumnIndex: SheetSchema.logColStatus + 1,
           ),
@@ -251,6 +253,26 @@ class SheetsRepository {
           ),
         ),
       );
+
+  /// Applies the Status dropdown to a specific [rowIndex] (1-based) in
+  /// [tab]. Call this right after appending an issue row.
+  Future<void> applyStatusDropdownToRow(
+      String spreadsheetId, String tab, int rowIndex) async {
+    final api = await _apis.sheetsApi();
+    final ss = await api.spreadsheets.get(
+      spreadsheetId,
+      $fields: 'sheets.properties(sheetId,title)',
+    );
+    final match = (ss.sheets ?? [])
+        .where((s) => s.properties?.title == tab)
+        .firstOrNull;
+    if (match == null) return;
+    await api.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(
+          requests: [_statusDropdownRequest(match.properties!.sheetId!, rowIndex)]),
+      spreadsheetId,
+    );
+  }
 
   /// Two conditional-format rules on the Status column: Open → yellow,
   /// Returned → green. [existingCount] rules are deleted first so re-running
@@ -309,7 +331,6 @@ class SheetsRepository {
     await api.spreadsheets.batchUpdate(
       sheets.BatchUpdateSpreadsheetRequest(requests: [
         ..._headerFormatRequests(sheetId),
-        _statusDropdownRequest(sheetId),
         ..._issueConditionalRequests(sheetId, existingCount),
       ]),
       spreadsheetId,
@@ -388,40 +409,150 @@ class SheetsRepository {
     return match != null ? int.tryParse(match.group(1)!) : null;
   }
 
-  /// Writes Total/Issued/Available formulas for an item row.
-  /// These are purely for human visibility in Google Sheets; the app ignores them.
-  Future<void> writeItemFormulas(String spreadsheetId, String tab, int rowIndex) async {
-    final qtyCol = A1.columnLetter(SheetSchema.itemColQuantity);
-    final idCol = A1.columnLetter(SheetSchema.itemColItemId);
+  /// Writes initial stat values for a newly added item (issued=0, damaged=0).
+  Future<void> writeItemFormulas(
+      String spreadsheetId, String tab, int rowIndex, int quantity) async {
     final totalCol = A1.columnLetter(SheetSchema.formulaColTotal);
-    final issuedCol = A1.columnLetter(SheetSchema.formulaColIssued);
     final availCol = A1.columnLetter(SheetSchema.formulaColAvailable);
-
-    final log = _qt(SheetSchema.issueLogTab);
-    final logId = A1.columnLetter(SheetSchema.logColItemId);
-    final logStatus = A1.columnLetter(SheetSchema.logColStatus);
-    final logQty = A1.columnLetter(SheetSchema.logColQuantity);
-
-    final damLog = _qt(SheetSchema.damageLogTab);
-    final damLogId = A1.columnLetter(SheetSchema.damageLogColItemId);
-    final damLogQty = A1.columnLetter(SheetSchema.damageLogColQuantity);
-    final damagedCol = A1.columnLetter(SheetSchema.formulaColDamaged);
-
-    final total = '=$qtyCol$rowIndex';
-    final issued =
-        '=SUMPRODUCT(($log!\$$logId\$2:\$$logId\$9999=$idCol$rowIndex)'
-        '*($log!\$$logStatus\$2:\$$logStatus\$9999="${SheetSchema.statusOpen}")'
-        '*($log!\$$logQty\$2:\$$logQty\$9999))';
-    final damaged =
-        '=SUMPRODUCT(($damLog!\$$damLogId\$2:\$$damLogId\$9999=$idCol$rowIndex)'
-        '*($damLog!\$$damLogQty\$2:\$$damLogQty\$9999))';
-    final available = '=$totalCol$rowIndex-$issuedCol$rowIndex-$damagedCol$rowIndex';
-
     await writeRange(
       spreadsheetId,
       '${_qt(tab)}!$totalCol$rowIndex:$availCol$rowIndex',
-      [[total, issued, damaged, available]],
+      [[quantity, 0, 0, quantity]],
     );
+  }
+
+  /// Batch-writes the current Total/Issued/Damaged/Available values for every
+  /// item in [items] that has a known rowIndex. Call this after any mutation
+  /// (issue, return, damage) so the sheet reflects the app's in-memory counts
+  /// without depending on cross-sheet SUMPRODUCT auto-recalculation — which
+  /// the Sheets API does not trigger reliably.
+  Future<void> batchWriteItemStats(
+      String spreadsheetId, String tab, List<dynamic> items) async {
+    final totalCol = A1.columnLetter(SheetSchema.formulaColTotal);
+    final availCol = A1.columnLetter(SheetSchema.formulaColAvailable);
+
+    final data = <sheets.ValueRange>[];
+    for (final item in items) {
+      final row = item.rowIndex as int?;
+      if (row == null) continue;
+      data.add(sheets.ValueRange(
+        range: '${_qt(tab)}!$totalCol$row:$availCol$row',
+        values: [
+          [item.quantity as int, item.issued as int, item.damaged as int, item.available as int]
+        ],
+      ));
+    }
+    if (data.isEmpty) return;
+    final api = await _apis.sheetsApi();
+    await api.spreadsheets.values.batchUpdate(
+      sheets.BatchUpdateValuesRequest(
+        data: data,
+        valueInputOption: _userEntered,
+      ),
+      spreadsheetId,
+    );
+  }
+
+  /// Deletes [tab] and removes every record that references it from both log
+  /// tabs. Uses 2 parallel reads + 1 batchUpdate (2 round trips total).
+  Future<void> deleteSection(String spreadsheetId, String tab) async {
+    final api = await _apis.sheetsApi();
+
+    // ── Round trip 1: two parallel reads ──────────────────────────────────
+    final results = await Future.wait<Object?>([
+      // sheetIds for section tab + both log tabs.
+      api.spreadsheets
+          .get(spreadsheetId, $fields: 'sheets.properties(sheetId,title)'),
+      // All rows from both logs in one call.
+      api.spreadsheets.values.batchGet(
+        spreadsheetId,
+        ranges: [
+          A1.wholeTab(
+              SheetSchema.issueLogTab, SheetSchema.issueLogHeaders.length),
+          A1.wholeTab(
+              SheetSchema.damageLogTab, SheetSchema.damageLogHeaders.length),
+        ],
+      ),
+    ]);
+
+    final ss = results[0] as sheets.Spreadsheet;
+    final batchResult = results[1] as sheets.BatchGetValuesResponse;
+
+    // Build a title → sheetId map.
+    final sheetMap = <String, int>{};
+    for (final s in ss.sheets ?? []) {
+      final title = s.properties?.title;
+      final id = s.properties?.sheetId;
+      if (title != null && id != null) sheetMap[title] = id;
+    }
+
+    final sectionSheetId = sheetMap[tab];
+    if (sectionSheetId == null) return; // already gone
+
+    final issueSheetId = sheetMap[SheetSchema.issueLogTab];
+    final damageSheetId = sheetMap[SheetSchema.damageLogTab];
+
+    // Find 1-based row indices where CategoryTab matches [tab].
+    List<int> matchingRows(List<List<Object?>> rows, int categoryTabCol) {
+      final result = <int>[];
+      for (var i = SheetSchema.firstDataRow - 1; i < rows.length; i++) {
+        final row = rows[i];
+        if (categoryTabCol < row.length &&
+            row[categoryTabCol]?.toString() == tab) {
+          result.add(i + 1);
+        }
+      }
+      return result;
+    }
+
+    final valueRanges = batchResult.valueRanges ?? [];
+    final issueRows = issueSheetId != null && valueRanges.isNotEmpty
+        ? matchingRows(
+            valueRanges[0].values ?? [], SheetSchema.logColCategoryTab)
+        : <int>[];
+    final damageRows = damageSheetId != null && valueRanges.length > 1
+        ? matchingRows(
+            valueRanges[1].values ?? [], SheetSchema.damageLogColCategoryTab)
+        : <int>[];
+
+    // ── Round trip 2: one batchUpdate does everything ──────────────────────
+    final requests = <sheets.Request>[];
+
+    sheets.Request deleteRow(int sheetId, int rowIndex) => sheets.Request(
+          deleteDimension: sheets.DeleteDimensionRequest(
+            range: sheets.DimensionRange(
+              sheetId: sheetId,
+              dimension: 'ROWS',
+              startIndex: rowIndex - 1, // 0-based inclusive
+              endIndex: rowIndex,       // 0-based exclusive
+            ),
+          ),
+        );
+
+    // Delete high → low so earlier deletions don't shift later indices.
+    for (final row in issueRows.reversed) {
+      requests.add(deleteRow(issueSheetId!, row));
+    }
+    for (final row in damageRows.reversed) {
+      requests.add(deleteRow(damageSheetId!, row));
+    }
+
+    // Delete the section tab itself (last, after log cleanup).
+    requests.add(
+        sheets.Request(deleteSheet: sheets.DeleteSheetRequest(sheetId: sectionSheetId)));
+
+    await api.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(requests: requests),
+      spreadsheetId,
+    );
+  }
+
+  /// Overwrites the Quantity cell for [rowIndex] with [newQty].
+  Future<void> updateItemQuantity(
+      String spreadsheetId, String tab, int rowIndex, int newQty) async {
+    final col = A1.columnLetter(SheetSchema.itemColQuantity);
+    await writeRange(
+        spreadsheetId, '${_qt(tab)}!$col$rowIndex:$col$rowIndex', [[newQty]]);
   }
 
   static String _qt(String tab) => "'${tab.replaceAll("'", "''")}'";

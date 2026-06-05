@@ -60,16 +60,22 @@ class IssueRepository {
       expectedReturn: expectedReturn,
       status: SheetSchema.statusOpen,
     );
-    await _sheets.appendRow(
+    final rowIndex = await _sheets.appendRow(
       spreadsheetId,
       SheetSchema.issueLogTab,
       record.toRow(),
       SheetSchema.issueLogHeaders.length,
     );
-    // Re-apply full issue-log formatting (header bold, data non-bold, Status
-    // dropdown, Open/Returned colours). Idempotent — runs only on write, and
-    // self-heals the formatting on any log that has issue activity.
-    await _sheets.formatIssueLog(spreadsheetId);
+    await Future.wait([
+      // Unbold the new row (append inherits header bold).
+      _sheets.unboldDataRows(spreadsheetId, SheetSchema.issueLogTab),
+      // Dropdown only on this row's Status cell — not the whole column.
+      if (rowIndex != null)
+        _sheets.applyStatusDropdownToRow(
+            spreadsheetId, SheetSchema.issueLogTab, rowIndex),
+      // Re-apply conditional colours (idempotent, clears duplicates).
+      _sheets.formatIssueLog(spreadsheetId),
+    ]);
     return record;
   }
 
@@ -81,8 +87,7 @@ class IssueRepository {
     await _sheets.deleteRow(spreadsheetId, SheetSchema.issueLogTab, record.rowIndex!);
   }
 
-  /// Marks an open issue as returned by updating its DateReturned + Status
-  /// cells in place. Requires [record.rowIndex] from a fresh [readLog].
+  /// Marks an open issue as fully returned.
   Future<IssueRecord> markReturned(String spreadsheetId, IssueRecord record) async {
     final rowIndex = record.rowIndex;
     if (rowIndex == null) {
@@ -92,7 +97,6 @@ class IssueRepository {
       dateReturned: DateTime.now(),
       status: SheetSchema.statusReturned,
     );
-    // Write only the DateReturned..Status cells (contiguous trailing columns).
     final fromCol = A1.columnLetter(SheetSchema.logColDateReturned);
     final toCol = A1.columnLetter(SheetSchema.logColStatus);
     final range = "'${SheetSchema.issueLogTab}'!$fromCol$rowIndex:$toCol$rowIndex";
@@ -101,5 +105,55 @@ class IssueRepository {
       fullRow.sublist(SheetSchema.logColDateReturned, SheetSchema.logColStatus + 1),
     ]);
     return returned;
+  }
+
+  /// Handles a partial return of [returnedQty] units from [record].
+  ///
+  /// Two parallel writes:
+  /// 1. Reduce the existing open row's Quantity by [returnedQty] (stays Open).
+  /// 2. Append a new Returned row for the [returnedQty] units.
+  Future<void> partialReturn(
+      String spreadsheetId, IssueRecord record, int returnedQty) async {
+    if (record.rowIndex == null) {
+      throw StateError('Cannot partial-return without a known row index.');
+    }
+    final remainingQty = record.quantity - returnedQty;
+    final qtyCol = A1.columnLetter(SheetSchema.logColQuantity);
+    final qtyRange =
+        "'${SheetSchema.issueLogTab}'!$qtyCol${record.rowIndex}:$qtyCol${record.rowIndex}";
+
+    final returnedRecord = IssueRecord(
+      logId: _uuid.v4(),
+      categoryTab: record.categoryTab,
+      itemId: record.itemId,
+      itemDetail: record.itemDetail,
+      quantity: returnedQty,
+      borrower: record.borrower,
+      dateIssued: record.dateIssued,
+      expectedReturn: record.expectedReturn,
+      dateReturned: DateTime.now(),
+      status: SheetSchema.statusReturned,
+    );
+
+    // Both writes in parallel.
+    final rowIndexFuture = _sheets.appendRow(
+      spreadsheetId,
+      SheetSchema.issueLogTab,
+      returnedRecord.toRow(),
+      SheetSchema.issueLogHeaders.length,
+    );
+    await Future.wait([
+      _sheets.writeRange(spreadsheetId, qtyRange, [[remainingQty]]),
+      rowIndexFuture,
+    ]);
+
+    final newRowIndex = await rowIndexFuture;
+    await Future.wait([
+      _sheets.unboldDataRows(spreadsheetId, SheetSchema.issueLogTab),
+      if (newRowIndex != null)
+        _sheets.applyStatusDropdownToRow(
+            spreadsheetId, SheetSchema.issueLogTab, newRowIndex),
+      _sheets.formatIssueLog(spreadsheetId),
+    ]);
   }
 }
