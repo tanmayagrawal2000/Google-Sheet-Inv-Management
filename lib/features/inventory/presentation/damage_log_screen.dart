@@ -96,11 +96,13 @@ class _DamageLogCard extends StatelessWidget {
         subtitle: Text(
           [
             record.categoryTab,
-            _fmt.format(record.damagedDate),
+            'Damaged ${_fmt.format(record.damagedDate)}',
+            if (record.repairDate != null)
+              'Repaired ${_fmt.format(record.repairDate!)}',
             if (record.details.isNotEmpty) record.details,
           ].join('  ·  '),
         ),
-        isThreeLine: record.details.isNotEmpty,
+        isThreeLine: true,
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

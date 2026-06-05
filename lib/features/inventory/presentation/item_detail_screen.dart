@@ -312,11 +312,18 @@ class _DamageCard extends StatelessWidget {
                           ?.copyWith(color: statusColor),
                     ),
                     Text(
-                      _fmt.format(record.damagedDate),
+                      'Damaged ${_fmt.format(record.damagedDate)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                     ),
+                    if (record.repairDate != null)
+                      Text(
+                        'Repaired ${_fmt.format(record.repairDate!)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.primary,
+                            ),
+                      ),
                     if (record.details.isNotEmpty)
                       Text(
                         record.details,

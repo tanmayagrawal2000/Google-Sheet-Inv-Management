@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/config/sheet_schema.dart';
@@ -57,26 +58,34 @@ class DamageRepository {
       details: details.trim(),
       status: SheetSchema.damageStatusDamaged,
     );
-    await _sheets.appendRow(
+    final rowIndex = await _sheets.appendRow(
       spreadsheetId,
       SheetSchema.damageLogTab,
       record.toRow(),
       SheetSchema.damageLogHeaders.length,
     );
-    await _sheets.unboldDataRows(spreadsheetId, SheetSchema.damageLogTab);
+    await Future.wait([
+      _sheets.unboldDataRows(spreadsheetId, SheetSchema.damageLogTab),
+      if (rowIndex != null)
+        _sheets.applyDamageStatusDropdownToRow(spreadsheetId, rowIndex),
+      _sheets.formatDamageLog(spreadsheetId),
+    ]);
     return record;
   }
 
-  /// Marks an entire damage record as repaired.
+  /// Marks an entire damage record as repaired, writing RepairDate + Status.
   Future<void> markRepaired(String spreadsheetId, DamageRecord record) async {
     if (record.rowIndex == null) {
       throw StateError('Cannot repair without a known row index.');
     }
-    final col = A1.columnLetter(SheetSchema.damageLogColStatus);
+    // RepairDate (index 7, col H) comes before Status (index 8, col I).
+    final repairCol = A1.columnLetter(SheetSchema.damageLogColRepairDate);
+    final statusCol = A1.columnLetter(SheetSchema.damageLogColStatus);
     final range =
-        "'${SheetSchema.damageLogTab}'!$col${record.rowIndex}:$col${record.rowIndex}";
+        "'${SheetSchema.damageLogTab}'!$repairCol${record.rowIndex}:$statusCol${record.rowIndex}";
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
     await _sheets.writeRange(
-        spreadsheetId, range, [[SheetSchema.damageStatusRepaired]]);
+        spreadsheetId, range, [[dateStr, SheetSchema.damageStatusRepaired]]);
   }
 
   /// Partially repairs [repairedQty] units of [record].
@@ -100,6 +109,7 @@ class DamageRepository {
       damagedDate: record.damagedDate,
       details: record.details,
       status: SheetSchema.damageStatusRepaired,
+      repairDate: DateTime.now(),
     );
 
     // Both writes in parallel.

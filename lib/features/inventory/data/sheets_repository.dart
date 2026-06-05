@@ -58,7 +58,7 @@ class SheetsRepository {
       '${_qt(name)}!${fromCol}1:${toCol}1',
       [SheetSchema.formulaHeaders],
     );
-    await _writeSummaryBlock(spreadsheetId, name);
+    await _writeSummaryBlock(spreadsheetId, name, sheetId);
     try {
       await _applyHeaderFormat(spreadsheetId, sheetId);
     } catch (_) {}
@@ -80,7 +80,7 @@ class SheetsRepository {
         continue;
       }
       await _applyHeaderFormat(spreadsheetId, id);
-      await _writeSummaryBlock(spreadsheetId, title);
+      await _writeSummaryBlock(spreadsheetId, title, id);
     }
     await ensureIssueLog(spreadsheetId);
     await ensureDamageLog(spreadsheetId);
@@ -100,19 +100,18 @@ class SheetsRepository {
     await formatIssueLog(spreadsheetId);
   }
 
-  /// Ensures the `_DamageLog` tab exists, with headers, bold header row, and
-  /// the amber data-row tint applied on creation.
+  /// Ensures the `_DamageLog` tab exists with headers, bold header row,
+  /// and Status conditional colours.
   Future<void> ensureDamageLog(String spreadsheetId) async {
     final titles = await _allTabTitles(spreadsheetId);
     if (titles.contains(SheetSchema.damageLogTab)) return;
-    final sheetId =
-        await _addSheet(spreadsheetId, SheetSchema.damageLogTab, hidden: false);
+    await _addSheet(spreadsheetId, SheetSchema.damageLogTab, hidden: false);
     await writeRange(
       spreadsheetId,
       A1.headerRow(SheetSchema.damageLogTab, SheetSchema.damageLogHeaders.length),
       [SheetSchema.damageLogHeaders],
     );
-    await _applyHeaderFormat(spreadsheetId, sheetId);
+    await formatDamageLog(spreadsheetId);
   }
 
   /// Ensures [tab] has the item header row in row 1.
@@ -189,10 +188,11 @@ class SheetsRepository {
       sheets.Color(red: r, green: g, blue: b);
 
   /// Writes a 5-row summary block (Total / Issued / Damaged / Available) using
-  /// whole-column SUM formulas that update automatically and never hit a row limit.
+  /// whole-column SUM formulas, then encloses it in a black border.
   /// Positioned dynamically at [SheetSchema.summaryLabelCol] so adding new
   /// data or formula columns never displaces it.
-  Future<void> _writeSummaryBlock(String spreadsheetId, String tab) async {
+  Future<void> _writeSummaryBlock(
+      String spreadsheetId, String tab, int sheetId) async {
     final lCol = A1.columnLetter(SheetSchema.summaryLabelCol);
     final vCol = A1.columnLetter(SheetSchema.summaryValueCol);
 
@@ -201,6 +201,7 @@ class SheetsRepository {
     final dc = A1.columnLetter(SheetSchema.formulaColDamaged);
     final ac = A1.columnLetter(SheetSchema.formulaColAvailable);
 
+    // Write values + formulas.
     await writeRange(
       spreadsheetId,
       '${_qt(tab)}!${lCol}1:${vCol}5',
@@ -211,6 +212,36 @@ class SheetsRepository {
         ['Damaged',   '=SUM($dc:$dc)'],
         ['Available', '=SUM($ac:$ac)'],
       ],
+    );
+
+    // Apply black outer border + thin inner borders.
+    final api = await _apis.sheetsApi();
+    final black = sheets.Border(
+        style: 'SOLID_MEDIUM', color: sheets.Color(red: 0, green: 0, blue: 0));
+    final thin = sheets.Border(
+        style: 'SOLID',
+        color: sheets.Color(red: 0.6, green: 0.6, blue: 0.6));
+    await api.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(requests: [
+        sheets.Request(
+          updateBorders: sheets.UpdateBordersRequest(
+            range: sheets.GridRange(
+              sheetId: sheetId,
+              startRowIndex: 0,
+              endRowIndex: 5,
+              startColumnIndex: SheetSchema.summaryLabelCol,
+              endColumnIndex: SheetSchema.summaryValueCol + 1,
+            ),
+            top: black,
+            bottom: black,
+            left: black,
+            right: black,
+            innerHorizontal: thin,
+            innerVertical: thin,
+          ),
+        ),
+      ]),
+      spreadsheetId,
     );
   }
 
@@ -366,6 +397,105 @@ class SheetsRepository {
     );
   }
 
+  /// Fully (re)formats `_DamageLog`: header bold + Status conditional colours.
+  /// Damaged → light red, Repaired → light green.
+  Future<void> formatDamageLog(String spreadsheetId) async {
+    final api = await _apis.sheetsApi();
+    final ss = await api.spreadsheets.get(
+      spreadsheetId,
+      $fields: 'sheets(properties(sheetId,title),conditionalFormats)',
+    );
+    final sheet = (ss.sheets ?? [])
+        .where((s) => s.properties?.title == SheetSchema.damageLogTab)
+        .firstOrNull;
+    if (sheet == null) return;
+    final sheetId = sheet.properties!.sheetId!;
+    final existingCount = sheet.conditionalFormats?.length ?? 0;
+
+    final statusRange = sheets.GridRange(
+      sheetId: sheetId,
+      startRowIndex: 1,
+      startColumnIndex: SheetSchema.damageLogColStatus,
+      endColumnIndex: SheetSchema.damageLogColStatus + 1,
+    );
+
+    sheets.Request rule(String value, sheets.Color color, int index) =>
+        sheets.Request(
+          addConditionalFormatRule: sheets.AddConditionalFormatRuleRequest(
+            index: index,
+            rule: sheets.ConditionalFormatRule(
+              ranges: [statusRange],
+              booleanRule: sheets.BooleanRule(
+                condition: sheets.BooleanCondition(
+                  type: 'TEXT_EQ',
+                  values: [sheets.ConditionValue(userEnteredValue: value)],
+                ),
+                format: sheets.CellFormat(backgroundColor: color),
+              ),
+            ),
+          ),
+        );
+
+    await api.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(requests: [
+        ..._headerFormatRequests(sheetId),
+        // Delete existing rules high→low then re-add (idempotent).
+        for (var i = existingCount - 1; i >= 0; i--)
+          sheets.Request(
+            deleteConditionalFormatRule:
+                sheets.DeleteConditionalFormatRuleRequest(
+                    sheetId: sheetId, index: i),
+          ),
+        rule(SheetSchema.damageStatusDamaged, _rgb(0.95, 0.80, 0.80), 0),
+        rule(SheetSchema.damageStatusRepaired, _rgb(0.72, 0.88, 0.80), 1),
+      ]),
+      spreadsheetId,
+    );
+  }
+
+  /// Dropdown (Damaged / Repaired) on a single Status cell at [rowIndex].
+  Future<void> applyDamageStatusDropdownToRow(
+      String spreadsheetId, int rowIndex) async {
+    final api = await _apis.sheetsApi();
+    final ss = await api.spreadsheets.get(
+      spreadsheetId,
+      $fields: 'sheets.properties(sheetId,title)',
+    );
+    final match = (ss.sheets ?? [])
+        .where((s) => s.properties?.title == SheetSchema.damageLogTab)
+        .firstOrNull;
+    if (match == null) return;
+    await api.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(requests: [
+        sheets.Request(
+          setDataValidation: sheets.SetDataValidationRequest(
+            range: sheets.GridRange(
+              sheetId: match.properties!.sheetId!,
+              startRowIndex: rowIndex - 1,
+              endRowIndex: rowIndex,
+              startColumnIndex: SheetSchema.damageLogColStatus,
+              endColumnIndex: SheetSchema.damageLogColStatus + 1,
+            ),
+            rule: sheets.DataValidationRule(
+              condition: sheets.BooleanCondition(
+                type: 'ONE_OF_LIST',
+                values: [
+                  sheets.ConditionValue(
+                      userEnteredValue: SheetSchema.damageStatusDamaged),
+                  sheets.ConditionValue(
+                      userEnteredValue: SheetSchema.damageStatusRepaired),
+                ],
+              ),
+              showCustomUi: true,
+              strict: false,
+            ),
+          ),
+        ),
+      ]),
+      spreadsheetId,
+    );
+  }
+
   /// Resets all data rows (row 2 onward) of [tab] to non-bold. Call this after
   /// appending rows: `values.append` copies the format of the row above the new
   /// row, so rows added below the bold header otherwise inherit bold.
@@ -428,7 +558,7 @@ class SheetsRepository {
       spreadsheetId,
       A1.wholeTab(tab, columnCount),
       valueInputOption: _userEntered,
-      insertDataOption: 'INSERT_ROWS',
+      insertDataOption: 'OVERWRITE',
     );
     // Parse row number from updatedRange like "'Tab'!A5:G5".
     final updated = response.updates?.updatedRange;

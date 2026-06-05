@@ -60,7 +60,8 @@ class SheetSchema {
   // ── Damage log columns ──────────────────────────────────────────────────────
 
   static const List<String> damageLogHeaders = <String>[
-    'LogId', 'CategoryTab', 'ItemId', 'ItemDetail', 'Quantity', 'DamagedDate', 'Details', 'Status',
+    'LogId', 'CategoryTab', 'ItemId', 'ItemDetail', 'Quantity',
+    'DamagedDate', 'Details', 'RepairDate', 'Status',
   ];
 
   static const int damageLogColLogId = 0;
@@ -70,7 +71,8 @@ class SheetSchema {
   static const int damageLogColQuantity = 4;
   static const int damageLogColDamagedDate = 5;
   static const int damageLogColDetails = 6;
-  static const int damageLogColStatus = 7;
+  static const int damageLogColRepairDate = 7;
+  static const int damageLogColStatus = 8;
 
   static const String damageStatusDamaged = 'Damaged';
   static const String damageStatusRepaired = 'Repaired';

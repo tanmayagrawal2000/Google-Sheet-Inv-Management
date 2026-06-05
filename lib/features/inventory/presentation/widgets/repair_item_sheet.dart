@@ -82,9 +82,9 @@ class _RepairItemSheetState extends State<RepairItemSheet> {
 
             // ── Details ──────────────────────────────────────────────────────
             _Detail(label: 'Qty', value: '×${record.quantity}'),
-            _Detail(
-                label: 'Damaged on',
-                value: _fmt.format(record.damagedDate)),
+            _Detail(label: 'Damaged on', value: _fmt.format(record.damagedDate)),
+            if (record.repairDate != null)
+              _Detail(label: 'Repaired on', value: _fmt.format(record.repairDate!)),
             if (record.details.isNotEmpty)
               _Detail(label: 'Details', value: record.details),
 

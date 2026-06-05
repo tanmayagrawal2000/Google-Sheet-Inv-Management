@@ -13,6 +13,7 @@ class DamageRecord extends Equatable {
     required this.damagedDate,
     this.details = '',
     this.status = SheetSchema.damageStatusDamaged,
+    this.repairDate,
     this.rowIndex,
   });
 
@@ -24,6 +25,7 @@ class DamageRecord extends Equatable {
   final DateTime damagedDate;
   final String details;
   final String status;
+  final DateTime? repairDate;
   final int? rowIndex;
 
   bool get isDamaged =>
@@ -42,7 +44,7 @@ class DamageRecord extends Equatable {
     return SheetSchema.damageStatusDamaged;
   }
 
-  DamageRecord copyWith({String? status}) => DamageRecord(
+  DamageRecord copyWith({String? status, DateTime? repairDate}) => DamageRecord(
         logId: logId,
         categoryTab: categoryTab,
         itemId: itemId,
@@ -51,6 +53,7 @@ class DamageRecord extends Equatable {
         damagedDate: damagedDate,
         details: details,
         status: status ?? this.status,
+        repairDate: repairDate ?? this.repairDate,
         rowIndex: rowIndex,
       );
 
@@ -64,6 +67,8 @@ class DamageRecord extends Equatable {
     row[SheetSchema.damageLogColDamagedDate] = _date(damagedDate);
     row[SheetSchema.damageLogColDetails] = details;
     row[SheetSchema.damageLogColStatus] = status;
+    row[SheetSchema.damageLogColRepairDate] =
+        repairDate != null ? _date(repairDate!) : '';
     return row;
   }
 
@@ -81,11 +86,12 @@ class DamageRecord extends Equatable {
       damagedDate: date,
       details: cell(SheetSchema.damageLogColDetails),
       status: _normalizeStatus(cell(SheetSchema.damageLogColStatus)),
+      repairDate: _parse(cell(SheetSchema.damageLogColRepairDate)),
       rowIndex: rowIndex,
     );
   }
 
   @override
   List<Object?> get props =>
-      [logId, categoryTab, itemId, itemDetail, quantity, damagedDate, details, status, rowIndex];
+      [logId, categoryTab, itemId, itemDetail, quantity, damagedDate, details, status, repairDate, rowIndex];
 }
