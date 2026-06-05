@@ -8,6 +8,7 @@ import '../../../shared/models/damage_record.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/issue_record.dart';
 import '../../issues/data/issue_repository.dart';
+import '../../issues/presentation/return_item_sheet.dart';
 import '../cubit/item_detail_cubit.dart';
 import '../data/catalog_repository.dart';
 import '../data/damage_repository.dart';
@@ -284,53 +285,52 @@ class _DamageCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isDamaged
-                      ? Icons.warning_amber_rounded
-                      : Icons.build_circle_outlined,
-                  color: statusColor,
-                  size: 18,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '×${record.quantity} ${isDamaged ? "damaged" : "repaired"}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(color: statusColor),
-                ),
-                const Spacer(),
-                Text(_fmt.format(record.damagedDate),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        )),
-              ],
-            ),
-            if (record.details.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(record.details,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      )),
-            ],
-            if (isDamaged) ...[
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonal(
-                  onPressed: () => _showRepairSheet(context),
-                  child: const Text('Repair'),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _showRepairSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(
+                isDamaged
+                    ? Icons.warning_amber_rounded
+                    : Icons.build_circle_outlined,
+                color: statusColor,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '×${record.quantity} ${isDamaged ? "damaged" : "repaired"}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(color: statusColor),
+                    ),
+                    Text(
+                      _fmt.format(record.damagedDate),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                    if (record.details.isNotEmpty)
+                      Text(
+                        record.details,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
+                  ],
                 ),
               ),
+              Icon(Icons.chevron_right,
+                  color: scheme.onSurfaceVariant, size: 18),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -360,52 +360,71 @@ class _IssueCard extends StatelessWidget {
     final isOpen = record.isOpen;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    record.borrower,
-                    style: Theme.of(context).textTheme.titleSmall,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _showReturnSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isOpen ? Icons.outbox_outlined : Icons.check_circle_outline,
+                    color: isOpen ? scheme.error : scheme.primary,
+                    size: 16,
                   ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isOpen
-                        ? scheme.errorContainer
-                        : scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(20),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(record.borrower,
+                        style: Theme.of(context).textTheme.titleSmall),
                   ),
-                  child: Text(
-                    isOpen ? 'Open' : 'Returned',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: isOpen
-                              ? scheme.onErrorContainer
-                              : scheme.onPrimaryContainer,
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isOpen
+                          ? scheme.errorContainer
+                          : scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      isOpen ? 'Open' : 'Returned',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: isOpen
+                                ? scheme.onErrorContainer
+                                : scheme.onPrimaryContainer,
+                          ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            _infoRow(context, Icons.arrow_upward,
-                'Issued  ${_fmt.format(record.dateIssued)}  ×${record.quantity}'),
-            if (record.expectedReturn != null)
-              _infoRow(context, Icons.event,
-                  'Due  ${_fmt.format(record.expectedReturn!)}'),
-            if (record.dateReturned != null)
-              _infoRow(context, Icons.arrow_downward,
-                  'Returned  ${_fmt.format(record.dateReturned!)}'),
-          ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              _infoRow(context, Icons.arrow_upward,
+                  'Issued  ${_fmt.format(record.dateIssued)}  ×${record.quantity}'),
+              if (record.expectedReturn != null)
+                _infoRow(context, Icons.event,
+                    'Due  ${_fmt.format(record.expectedReturn!)}'),
+              if (record.dateReturned != null)
+                _infoRow(context, Icons.arrow_downward,
+                    'Returned  ${_fmt.format(record.dateReturned!)}'),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _showReturnSheet(BuildContext context) async {
+    final cubit = context.read<ItemDetailCubit>();
+    final result = await showModalBottomSheet<ReturnResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ReturnItemSheet(record: record),
+    );
+    if (result == null) return;
+    await cubit.returnIssue(record, result.quantity);
   }
 
   Widget _infoRow(BuildContext context, IconData icon, String text) => Padding(

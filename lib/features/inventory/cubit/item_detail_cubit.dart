@@ -67,6 +67,26 @@ class ItemDetailCubit extends Cubit<DataState<ItemDetailData>> {
     }
   }
 
+  /// [returnedQty] == record.quantity → full return.
+  /// [returnedQty] <  record.quantity → partial return (open row qty reduced,
+  ///   new Returned row appended).
+  Future<bool> returnIssue(IssueRecord record, int returnedQty) async {
+    emit(state.copyWith(refreshing: true, clearError: true));
+    try {
+      if (returnedQty >= record.quantity) {
+        await _issues.markReturned(spreadsheetId, record);
+      } else {
+        await _issues.partialReturn(spreadsheetId, record, returnedQty);
+      }
+      await load();
+      await _refreshSectionStats();
+      return true;
+    } catch (e) {
+      emit(state.copyWith(error: '$e', refreshing: false));
+      return false;
+    }
+  }
+
   /// [repairedQty] == record.quantity → full repair.
   /// [repairedQty] <  record.quantity → partial repair (damaged row qty
   ///   reduced, new Repaired row appended).

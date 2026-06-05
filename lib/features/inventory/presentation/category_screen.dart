@@ -93,9 +93,12 @@ class _CategoryViewState extends State<_CategoryView> {
       appBar: AppBar(
         title: Text(widget.tab),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(20),
-          child: Text(widget.roomName,
-              style: Theme.of(context).textTheme.bodySmall),
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(widget.roomName,
+                style: Theme.of(context).textTheme.bodyMedium),
+          ),
         ),
         actions: [
           IconButton(
@@ -277,25 +280,29 @@ class _ItemCard extends StatelessWidget {
                     ].join(' · '),
                   )
                 : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FilledButton.tonal(
-              onPressed: canIssue ? () => _issue(context) : null,
-              child: const Text('Issue'),
+        trailing: PopupMenuButton<String>(
+          onSelected: (v) {
+            if (v == 'issue') _issue(context);
+            if (v == 'addqty') _addQty(context);
+            if (v == 'damaged') _markDamaged(context);
+            if (v == 'delete') _confirmDelete(context);
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'issue',
+              enabled: canIssue,
+              child: Text(
+                'Issue',
+                style: TextStyle(
+                  color: canIssue
+                      ? null
+                      : Theme.of(context).disabledColor,
+                ),
+              ),
             ),
-            PopupMenuButton<String>(
-              onSelected: (v) {
-                if (v == 'addqty') _addQty(context);
-                if (v == 'damaged') _markDamaged(context);
-                if (v == 'delete') _confirmDelete(context);
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'addqty', child: Text('Add qty')),
-                PopupMenuItem(value: 'damaged', child: Text('Mark damaged')),
-                PopupMenuItem(value: 'delete', child: Text('Delete')),
-              ],
-            ),
+            const PopupMenuItem(value: 'addqty', child: Text('Add qty')),
+            const PopupMenuItem(value: 'damaged', child: Text('Mark damaged')),
+            const PopupMenuItem(value: 'delete', child: Text('Delete')),
           ],
         ),
           ),

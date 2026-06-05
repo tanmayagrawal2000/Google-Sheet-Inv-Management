@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../shared/models/damage_record.dart';
 
@@ -18,6 +19,7 @@ class RepairItemSheet extends StatefulWidget {
 class _RepairItemSheetState extends State<RepairItemSheet> {
   bool _partial = false;
   final _controller = TextEditingController();
+  static final _fmt = DateFormat('dd MMM yyyy');
 
   @override
   void dispose() {
@@ -39,63 +41,124 @@ class _RepairItemSheetState extends State<RepairItemSheet> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final record = widget.record;
+    final isDamaged = record.isDamaged;
+    final statusColor = isDamaged ? scheme.error : scheme.primary;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Repair Items', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 4),
-          Text(
-            '${record.itemDetail}  ·  ×${record.quantity} damaged',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-
-          // Repair All
-          _OptionTile(
-            icon: Icons.build_circle_outlined,
-            label: 'Repair all  ×${record.quantity}',
-            selected: !_partial,
-            scheme: scheme,
-            onTap: () => setState(() => _partial = false),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Repair Partial
-          _OptionTile(
-            icon: Icons.build_outlined,
-            label: 'Repair partial',
-            selected: _partial,
-            scheme: scheme,
-            onTap: () => setState(() => _partial = true),
-          ),
-
-          if (_partial) ...[
-            const SizedBox(height: 14),
-            TextField(
-              controller: _controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Qty repaired',
-                helperText: '1 – ${record.quantity}',
-              ),
-              onSubmitted: (_) => _submit(),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Header ──────────────────────────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    record.itemDetail,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    isDamaged ? 'Damaged' : 'Repaired',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: statusColor),
+                  ),
+                ),
+              ],
             ),
-          ],
+            const SizedBox(height: 16),
 
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _submit,
-            child: const Text('Confirm Repair'),
+            // ── Details ──────────────────────────────────────────────────────
+            _Detail(label: 'Qty', value: '×${record.quantity}'),
+            _Detail(
+                label: 'Damaged on',
+                value: _fmt.format(record.damagedDate)),
+            if (record.details.isNotEmpty)
+              _Detail(label: 'Details', value: record.details),
+
+            const Divider(height: 28),
+
+            // ── Actions (damaged only) ───────────────────────────────────────
+            if (isDamaged) ...[
+              Text('Repair',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              _OptionTile(
+                icon: Icons.build_circle_outlined,
+                label: 'Repair all  ×${record.quantity}',
+                selected: !_partial,
+                scheme: scheme,
+                onTap: () => setState(() => _partial = false),
+              ),
+              const SizedBox(height: 10),
+              _OptionTile(
+                icon: Icons.build_outlined,
+                label: 'Repair partial',
+                selected: _partial,
+                scheme: scheme,
+                onTap: () => setState(() => _partial = true),
+              ),
+              if (_partial) ...[
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Qty repaired',
+                    helperText: '1 – ${record.quantity}',
+                  ),
+                  onSubmitted: (_) => _submit(),
+                ),
+              ],
+              const SizedBox(height: 20),
+              FilledButton(onPressed: _submit, child: const Text('Confirm Repair')),
+            ] else ...[
+              FilledButton.tonal(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Detail extends StatelessWidget {
+  const _Detail({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    )),
+          ),
+          Expanded(
+            child: Text(value,
+                style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),
