@@ -246,40 +246,37 @@ class _ItemCard extends StatelessWidget {
     final canIssue = item.available > 0;
     final thumb = item.thumbnailUrl;
     return Card(
-      child: ListTile(
-        onTap: () => context.push(
-          '/room/$spreadsheetId/category/${Uri.encodeComponent(tab)}/item',
-          extra: item,
-        ),
-        leading: thumb != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  thumb,
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, size: 48),
-                ),
-              )
-            : null,
-        title: Text(item.detail.isEmpty ? '(no detail)' : item.detail),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if ([item.sno, item.firmName, item.price]
-                .any((s) => s.isNotEmpty))
-              Text(
-                [
-                  if (item.sno.isNotEmpty) 'SNo ${item.sno}',
-                  if (item.firmName.isNotEmpty) item.firmName,
-                  if (item.price.isNotEmpty) item.price,
-                ].join(' · '),
-              ),
-            const SizedBox(height: 6),
-            _ItemStats(item: item),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            onTap: () => context.push(
+              '/room/$spreadsheetId/category/${Uri.encodeComponent(tab)}/item',
+              extra: item,
+            ),
+            leading: thumb != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.network(
+                      thumb,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.broken_image_outlined, size: 48),
+                    ),
+                  )
+                : null,
+            title: Text(item.detail.isEmpty ? '(no detail)' : item.detail),
+            subtitle: [item.sno, item.firmName, item.price].any((s) => s.isNotEmpty)
+                ? Text(
+                    [
+                      if (item.sno.isNotEmpty) 'SNo ${item.sno}',
+                      if (item.firmName.isNotEmpty) item.firmName,
+                      if (item.price.isNotEmpty) item.price,
+                    ].join(' · '),
+                  )
+                : null,
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -301,6 +298,13 @@ class _ItemCard extends StatelessWidget {
             ),
           ],
         ),
+          ),
+          // Stats sit below the ListTile at full card width — no trailing constraint.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: _ItemStats(item: item),
+          ),
+        ],
       ),
     );
   }
@@ -406,11 +410,11 @@ class _ItemStats extends StatelessWidget {
     return Row(
       children: [
         _Stat(label: 'Total', value: item.quantity, color: scheme.onSurface),
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         _Stat(label: 'Issued', value: item.issued, color: scheme.tertiary),
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         _Stat(label: 'Damaged', value: item.damaged, color: scheme.error),
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         _Stat(label: 'Available', value: item.available, color: scheme.primary),
       ],
     );
