@@ -101,6 +101,13 @@ class UserRepository {
           '${SheetSchema.usersSheetTab}!$colLetter$rowNumber:$colLetter$rowNumber',
           [[isAdmin ? 'write' : '']]);
     }
+
+    // Apply dropdown only to existing data rows (skip header, skip empty rows).
+    final sheetId = await _usersSheetId(ssId);
+    if (sheetId != null && rows.length > 1) {
+      await _applyPermissionDropdown(ssId, sheetId, newColIndex,
+          startRowIndex: 1, endRowIndex: rows.length);
+    }
   }
 
   /// Removes the column for [categoryName] from the Users sheet.
@@ -245,6 +252,19 @@ class UserRepository {
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'OVERWRITE',
     );
+
+    // Apply dropdown to the new row only (rows.length = header + existing users,
+    // so new row is at 0-based index rows.length).
+    final newRowIndex = rows.length; // 0-based
+    final sheetId = await _usersSheetId(ssId);
+    if (sheetId != null) {
+      for (var c = SheetSchema.usersFirstCatCol;
+          c < headers.length;
+          c++) {
+        await _applyPermissionDropdown(ssId, sheetId, c,
+            startRowIndex: newRowIndex, endRowIndex: newRowIndex + 1);
+      }
+    }
   }
 
   /// Deletes the user row at [user.rowIndex] from the sheet.
@@ -387,7 +407,106 @@ class UserRepository {
         '${SheetSchema.usersSheetTab}!A1:${_colLetter(headers.length - 1)}2',
         [headers, adminRow]);
 
+    // Apply bold header row + freeze row 1 (same pattern as section tabs).
+    await sheetsApi.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(requests: [
+        sheets.Request(
+          repeatCell: sheets.RepeatCellRequest(
+            range: sheets.GridRange(
+                sheetId: defaultSheetId, startRowIndex: 0, endRowIndex: 1),
+            cell: sheets.CellData(
+              userEnteredFormat: sheets.CellFormat(
+                textFormat: sheets.TextFormat(bold: true),
+              ),
+            ),
+            fields: 'userEnteredFormat.textFormat.bold',
+          ),
+        ),
+        sheets.Request(
+          repeatCell: sheets.RepeatCellRequest(
+            range: sheets.GridRange(
+                sheetId: defaultSheetId, startRowIndex: 1),
+            cell: sheets.CellData(
+              userEnteredFormat: sheets.CellFormat(
+                textFormat: sheets.TextFormat(bold: false),
+              ),
+            ),
+            fields: 'userEnteredFormat.textFormat.bold',
+          ),
+        ),
+        sheets.Request(
+          updateSheetProperties: sheets.UpdateSheetPropertiesRequest(
+            properties: sheets.SheetProperties(
+              sheetId: defaultSheetId,
+              gridProperties: sheets.GridProperties(frozenRowCount: 1),
+            ),
+            fields: 'gridProperties.frozenRowCount',
+          ),
+        ),
+      ]),
+      ssId,
+    );
+
+    // Apply write/read/none dropdown to every category column (D+),
+    // only on the admin data row (row 2). endRowIndex = 2 (0-based exclusive).
+    for (var c = SheetSchema.usersFirstCatCol;
+        c < headers.length;
+        c++) {
+      await _applyPermissionDropdown(ssId, defaultSheetId, c,
+          startRowIndex: 1, endRowIndex: 2);
+    }
+
     return ssId;
+  }
+
+  /// Fetches the numeric sheetId of the Users tab.
+  Future<int?> _usersSheetId(String ssId) async {
+    final api = await _apis.sheetsApi();
+    final ss = await api.spreadsheets
+        .get(ssId, $fields: 'sheets.properties(sheetId,title)');
+    return (ss.sheets ?? [])
+        .where((s) => s.properties?.title == SheetSchema.usersSheetTab)
+        .firstOrNull
+        ?.properties
+        ?.sheetId;
+  }
+
+  /// Applies a write / read / none dropdown to [colIndex] (0-based),
+  /// from [startRowIndex] to [endRowIndex] (both 0-based, end exclusive).
+  /// Always pass an explicit [endRowIndex] so empty rows never get the arrow.
+  Future<void> _applyPermissionDropdown(
+      String ssId, int sheetId, int colIndex,
+      {required int startRowIndex, required int endRowIndex}) async {
+    if (endRowIndex <= startRowIndex) return; // nothing to apply
+    final api = await _apis.sheetsApi();
+    await api.spreadsheets.batchUpdate(
+      sheets.BatchUpdateSpreadsheetRequest(requests: [
+        sheets.Request(
+          setDataValidation: sheets.SetDataValidationRequest(
+            range: sheets.GridRange(
+              sheetId: sheetId,
+              startRowIndex: startRowIndex,
+              endRowIndex: endRowIndex,
+              startColumnIndex: colIndex,
+              endColumnIndex: colIndex + 1,
+            ),
+            rule: sheets.DataValidationRule(
+              condition: sheets.BooleanCondition(
+                type: 'ONE_OF_LIST',
+                values: [
+                  sheets.ConditionValue(userEnteredValue: 'write'),
+                  sheets.ConditionValue(userEnteredValue: 'read'),
+                  sheets.ConditionValue(userEnteredValue: 'none'),
+                ],
+              ),
+              showCustomUi: true,
+              strict: false,
+            ),
+          ),
+        ),
+      ]),
+      ssId,
+    );
   }
 
   Future<List<List<Object?>>> _readAll(String ssId) async {
