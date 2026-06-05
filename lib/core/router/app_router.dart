@@ -5,6 +5,7 @@ import '../../features/auth/cubit/auth_cubit.dart';
 import '../../features/auth/data/auth_service.dart';
 import '../../features/auth/presentation/sign_in_screen.dart';
 import '../../features/inventory/presentation/category_screen.dart';
+import '../../features/inventory/presentation/damage_log_screen.dart';
 import '../../features/inventory/presentation/item_detail_screen.dart';
 import '../../features/inventory/presentation/room_screen.dart';
 import '../../features/issues/presentation/issues_screen.dart';
@@ -43,6 +44,13 @@ GoRouter buildRouter(AuthCubit authCubit) {
       GoRoute(
         path: '/room/:id/log',
         builder: (context, state) => IssuesScreen(
+          spreadsheetId: state.pathParameters['id']!,
+          roomName: state.uri.queryParameters['name'] ?? 'Room',
+        ),
+      ),
+      GoRoute(
+        path: '/room/:id/damage-log',
+        builder: (context, state) => DamageLogScreen(
           spreadsheetId: state.pathParameters['id']!,
           roomName: state.uri.queryParameters['name'] ?? 'Room',
         ),

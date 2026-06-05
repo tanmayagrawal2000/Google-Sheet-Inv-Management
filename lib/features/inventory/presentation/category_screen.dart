@@ -43,7 +43,9 @@ class CategoryScreen extends StatelessWidget {
   }
 }
 
-class _CategoryView extends StatelessWidget {
+enum _ItemFilter { all, issued, damaged, available }
+
+class _CategoryView extends StatefulWidget {
   const _CategoryView(
       {required this.spreadsheetId,
       required this.tab,
@@ -53,13 +55,47 @@ class _CategoryView extends StatelessWidget {
   final String roomName;
 
   @override
+  State<_CategoryView> createState() => _CategoryViewState();
+}
+
+class _CategoryViewState extends State<_CategoryView> {
+  _ItemFilter _filter = _ItemFilter.all;
+
+  List<InventoryItem> _applyFilter(List<InventoryItem> items) {
+    switch (_filter) {
+      case _ItemFilter.all:
+        return items;
+      case _ItemFilter.issued:
+        return items.where((i) => i.issued > 0).toList();
+      case _ItemFilter.damaged:
+        return items.where((i) => i.damaged > 0).toList();
+      case _ItemFilter.available:
+        return items.where((i) => i.available > 0).toList();
+    }
+  }
+
+  String _emptyMessage() {
+    switch (_filter) {
+      case _ItemFilter.all:
+        return 'No items yet.\nTap "Add item".';
+      case _ItemFilter.issued:
+        return 'No items currently issued.';
+      case _ItemFilter.damaged:
+        return 'No damaged items.';
+      case _ItemFilter.available:
+        return 'No items available.';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(tab),
+        title: Text(widget.tab),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(20),
-          child: Text(roomName, style: Theme.of(context).textTheme.bodySmall),
+          child: Text(widget.roomName,
+              style: Theme.of(context).textTheme.bodySmall),
         ),
         actions: [
           IconButton(
@@ -78,22 +114,31 @@ class _CategoryView extends StatelessWidget {
         builder: (context, state) {
           return Column(
             children: [
-              if (state.hasData) _SummaryBar(data: state.data!),
+              if (state.hasData)
+                _SummaryBar(
+                  data: state.data!,
+                  activeFilter: _filter,
+                  onFilterTap: (f) =>
+                      setState(() => _filter = _filter == f ? _ItemFilter.all : f),
+                ),
               Expanded(
                 child: DataView<CategoryData>(
                   state: state,
                   onRetry: () => context.read<CategoryCubit>().load(),
-                  isEmpty: (d) => d.items.isEmpty,
-                  emptyMessage: 'No items yet.\nTap "Add item".',
-                  builder: (context, data) => ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: data.items.length,
-                    itemBuilder: (context, i) => _ItemCard(
-                      item: data.items[i],
-                      spreadsheetId: spreadsheetId,
-                      tab: tab,
-                    ),
-                  ),
+                  isEmpty: (d) => _applyFilter(d.items).isEmpty,
+                  emptyMessage: _emptyMessage(),
+                  builder: (context, data) {
+                    final filtered = _applyFilter(data.items);
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) => _ItemCard(
+                        item: filtered[i],
+                        spreadsheetId: widget.spreadsheetId,
+                        tab: widget.tab,
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -126,29 +171,61 @@ class _CategoryView extends StatelessWidget {
 }
 
 class _SummaryBar extends StatelessWidget {
-  const _SummaryBar({required this.data});
+  const _SummaryBar({
+    required this.data,
+    required this.activeFilter,
+    required this.onFilterTap,
+  });
+
   final CategoryData data;
+  final _ItemFilter activeFilter;
+  final ValueChanged<_ItemFilter> onFilterTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    Widget stat(String label, int value, Color color) => Expanded(
-          child: Column(
-            children: [
-              Text('$value', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color)),
-              Text(label, style: Theme.of(context).textTheme.labelSmall),
-            ],
+
+    Widget stat(String label, int value, Color color, _ItemFilter filter) {
+      final isActive = activeFilter == filter;
+      return Expanded(
+        child: InkWell(
+          onTap: () => onFilterTap(filter),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: isActive ? color.withValues(alpha: 0.12) : null,
+              border: isActive
+                  ? Border(bottom: BorderSide(color: color, width: 2))
+                  : null,
+            ),
+            child: Column(
+              children: [
+                Text('$value',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(color: color)),
+                Text(label,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: isActive ? color : null,
+                          fontWeight: isActive ? FontWeight.w600 : null,
+                        )),
+              ],
+            ),
           ),
-        );
+        ),
+      );
+    }
+
     return Container(
       color: scheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          stat('Total', data.totalUnits, scheme.onSurface),
-          stat('Issued', data.issuedUnits, scheme.tertiary),
-          stat('Damaged', data.damagedUnits, scheme.error),
-          stat('Available', data.availableUnits, scheme.primary),
+          stat('Total', data.totalUnits, scheme.onSurface, _ItemFilter.all),
+          stat('Issued', data.issuedUnits, scheme.tertiary, _ItemFilter.issued),
+          stat('Damaged', data.damagedUnits, scheme.error, _ItemFilter.damaged),
+          stat('Available', data.availableUnits, scheme.primary, _ItemFilter.available),
         ],
       ),
     );

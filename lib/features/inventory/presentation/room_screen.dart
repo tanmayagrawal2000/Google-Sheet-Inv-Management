@@ -35,12 +35,35 @@ class _RoomView extends StatelessWidget {
       appBar: AppBar(
         title: Text(roomName),
         actions: [
-          IconButton(
-            tooltip: 'Issue log',
-            onPressed: () => context.push(
-              '/room/$spreadsheetId/log?name=${Uri.encodeComponent(roomName)}',
-            ),
+          PopupMenuButton<String>(
+            tooltip: 'Logs',
             icon: const Icon(Icons.receipt_long_outlined),
+            onSelected: (v) {
+              final name = Uri.encodeComponent(roomName);
+              if (v == 'issues') {
+                context.push('/room/$spreadsheetId/log?name=$name');
+              } else {
+                context.push('/room/$spreadsheetId/damage-log?name=$name');
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'issues',
+                child: ListTile(
+                  leading: Icon(Icons.assignment_outlined),
+                  title: Text('Issue Log'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'damage',
+                child: ListTile(
+                  leading: Icon(Icons.warning_amber_outlined),
+                  title: Text('Damage Log'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
           IconButton(
             tooltip: 'Refresh',
