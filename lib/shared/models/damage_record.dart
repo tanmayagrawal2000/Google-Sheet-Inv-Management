@@ -29,7 +29,10 @@ class DamageRecord extends Equatable {
   final int? rowIndex;
 
   bool get isDamaged =>
-      status.toLowerCase() != SheetSchema.damageStatusRepaired.toLowerCase();
+      status.toLowerCase() == SheetSchema.damageStatusDamaged.toLowerCase();
+
+  bool get isDiscarded =>
+      status.toLowerCase() == SheetSchema.damageStatusDiscarded.toLowerCase();
 
   static final DateFormat _fmt = DateFormat('yyyy-MM-dd');
   static String _date(DateTime d) => _fmt.format(d);
@@ -40,6 +43,9 @@ class DamageRecord extends Equatable {
     final v = raw.trim().toLowerCase();
     if (v == SheetSchema.damageStatusRepaired.toLowerCase()) {
       return SheetSchema.damageStatusRepaired;
+    }
+    if (v == SheetSchema.damageStatusDiscarded.toLowerCase()) {
+      return SheetSchema.damageStatusDiscarded;
     }
     return SheetSchema.damageStatusDamaged;
   }

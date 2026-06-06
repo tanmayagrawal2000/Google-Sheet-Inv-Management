@@ -35,6 +35,38 @@ class DamageLogCubit extends Cubit<DataState<List<DamageRecord>>> {
     }
   }
 
+  /// [discardedQty] == record.quantity → full discard.
+  /// [discardedQty] <  record.quantity → partial discard.
+  /// Also permanently reduces the item's Quantity by [discardedQty].
+  Future<bool> discardDamage(DamageRecord record, int discardedQty) async {
+    emit(state.copyWith(refreshing: true, clearError: true));
+    try {
+      if (discardedQty >= record.quantity) {
+        await _damage.markDiscarded(spreadsheetId, record);
+      } else {
+        await _damage.partialDiscard(spreadsheetId, record, discardedQty);
+      }
+      // Load fresh section data to get current item rowIndex and quantity.
+      final categoryData = await _catalog.loadCategory(
+          spreadsheetId, record.categoryTab);
+      final freshItem = categoryData.items
+          .where((i) => i.itemId == record.itemId)
+          .firstOrNull;
+      if (freshItem != null) {
+        final newQty =
+            (freshItem.quantity - discardedQty).clamp(0, freshItem.quantity);
+        await _catalog.updateItemQty(
+            spreadsheetId, record.categoryTab, freshItem, newQty);
+      }
+      await load();
+      await _refreshSectionStats(record.categoryTab);
+      return true;
+    } catch (e) {
+      emit(state.copyWith(error: '$e', refreshing: false));
+      return false;
+    }
+  }
+
   /// [repairedQty] == record.quantity → full repair.
   /// [repairedQty] <  record.quantity → partial repair.
   Future<bool> repairDamage(DamageRecord record, int repairedQty) async {

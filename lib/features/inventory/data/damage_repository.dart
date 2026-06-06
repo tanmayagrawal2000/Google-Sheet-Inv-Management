@@ -25,7 +25,9 @@ class DamageRepository {
     return out;
   }
 
-  /// Total **unrepaired** damaged units per itemId for a given category tab.
+  /// Counts units with status == "Damaged" per itemId.
+  /// Repaired and Discarded rows are excluded — discarded items reduce the
+  /// item's Quantity directly, so they don't need to stay in this count.
   Future<Map<String, int>> damagedByItem(
       String spreadsheetId, String categoryTab) async {
     final log = await readLog(spreadsheetId);
@@ -64,12 +66,9 @@ class DamageRepository {
       record.toRow(),
       SheetSchema.damageLogHeaders.length,
     );
-    await Future.wait([
-      _sheets.unboldDataRows(spreadsheetId, SheetSchema.damageLogTab),
-      if (rowIndex != null)
-        _sheets.applyDamageStatusDropdownToRow(spreadsheetId, rowIndex),
-      _sheets.formatDamageLog(spreadsheetId),
-    ]);
+    if (rowIndex != null) {
+      await _sheets.applyDamageStatusDropdownToRow(spreadsheetId, rowIndex);
+    }
     return record;
   }
 
@@ -86,6 +85,55 @@ class DamageRepository {
     final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
     await _sheets.writeRange(
         spreadsheetId, range, [[dateStr, SheetSchema.damageStatusRepaired]]);
+  }
+
+  /// Marks an entire damage record as discarded (permanently gone).
+  Future<void> markDiscarded(String spreadsheetId, DamageRecord record) async {
+    if (record.rowIndex == null) {
+      throw StateError('Cannot discard without a known row index.');
+    }
+    final statusCol = A1.columnLetter(SheetSchema.damageLogColStatus);
+    final repairCol = A1.columnLetter(SheetSchema.damageLogColRepairDate);
+    final range =
+        "'${SheetSchema.damageLogTab}'!$repairCol${record.rowIndex}:$statusCol${record.rowIndex}";
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await _sheets.writeRange(
+        spreadsheetId, range, [[dateStr, SheetSchema.damageStatusDiscarded]]);
+  }
+
+  /// Partially discards [discardedQty] units. Reduces the existing damaged
+  /// row's qty, appends a new Discarded row.
+  Future<void> partialDiscard(
+      String spreadsheetId, DamageRecord record, int discardedQty) async {
+    if (record.rowIndex == null) {
+      throw StateError('Cannot partial-discard without a known row index.');
+    }
+    final remainingQty = record.quantity - discardedQty;
+    final qtyCol = A1.columnLetter(SheetSchema.damageLogColQuantity);
+    final qtyRange =
+        "'${SheetSchema.damageLogTab}'!$qtyCol${record.rowIndex}:$qtyCol${record.rowIndex}";
+
+    final discardedRecord = DamageRecord(
+      logId: _uuid.v4(),
+      categoryTab: record.categoryTab,
+      itemId: record.itemId,
+      itemDetail: record.itemDetail,
+      quantity: discardedQty,
+      damagedDate: record.damagedDate,
+      details: record.details,
+      status: SheetSchema.damageStatusDiscarded,
+      repairDate: DateTime.now(),
+    );
+
+    await Future.wait([
+      _sheets.writeRange(spreadsheetId, qtyRange, [[remainingQty]]),
+      _sheets.appendRow(
+        spreadsheetId,
+        SheetSchema.damageLogTab,
+        discardedRecord.toRow(),
+        SheetSchema.damageLogHeaders.length,
+      ),
+    ]);
   }
 
   /// Partially repairs [repairedQty] units of [record].
@@ -122,6 +170,5 @@ class DamageRepository {
         SheetSchema.damageLogHeaders.length,
       ),
     ]);
-    await _sheets.unboldDataRows(spreadsheetId, SheetSchema.damageLogTab);
   }
 }

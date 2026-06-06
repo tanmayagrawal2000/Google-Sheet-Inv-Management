@@ -12,6 +12,7 @@ import '../../issues/presentation/return_item_sheet.dart';
 import '../cubit/item_detail_cubit.dart';
 import '../data/catalog_repository.dart';
 import '../data/damage_repository.dart';
+import 'widgets/discard_item_sheet.dart';
 import 'widgets/repair_item_sheet.dart';
 
 class ItemDetailScreen extends StatelessWidget {
@@ -50,7 +51,10 @@ class _DetailView extends StatelessWidget {
     return BlocBuilder<ItemDetailCubit, DataState<ItemDetailData>>(
       builder: (context, state) {
         final cubit = context.read<ItemDetailCubit>();
+        // Static fields (name, image, metadata) — always correct, render immediately.
         final item = cubit.item;
+        // Live counts — null until the first load() completes.
+        final statsItem = state.data?.item;
         final imageUrl = _largeImageUrl(item.imageUrl);
 
         return Scaffold(
@@ -108,8 +112,11 @@ class _DetailView extends StatelessWidget {
 
                       const SizedBox(height: 20),
 
-                      // Stats
-                      _StatsRow(item: item),
+                      // Stats — show loading bar until fresh counts arrive.
+                      if (statsItem != null)
+                        _StatsRow(item: statsItem)
+                      else
+                        const LinearProgressIndicator(),
 
                       // Bill details
                       if (item.billNo.isNotEmpty || item.billDate.isNotEmpty) ...[
@@ -281,13 +288,18 @@ class _DamageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDamaged = record.isDamaged;
-    final statusColor = isDamaged ? scheme.error : scheme.primary;
+    final isDiscarded = record.isDiscarded;
+    final statusColor = isDamaged
+        ? scheme.error
+        : isDiscarded
+            ? scheme.onSurfaceVariant
+            : scheme.primary;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _showRepairSheet(context),
+        onTap: isDamaged ? () => _showActionMenu(context) : () => _showRepairSheet(context),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -305,7 +317,7 @@ class _DamageCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '×${record.quantity} ${isDamaged ? "damaged" : "repaired"}',
+                      '×${record.quantity} ${isDamaged ? "damaged" : isDiscarded ? "discarded" : "repaired"}',
                       style: Theme.of(context)
                           .textTheme
                           .titleSmall
@@ -343,6 +355,36 @@ class _DamageCard extends StatelessWidget {
     );
   }
 
+  Future<void> _showActionMenu(BuildContext context) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('What would you like to do?'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'repair'),
+            child: const ListTile(
+              leading: Icon(Icons.build_circle_outlined),
+              title: Text('Repair'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'discard'),
+            child: const ListTile(
+              leading: Icon(Icons.delete_sweep_outlined),
+              title: Text('Discard'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted) return;
+    if (choice == 'repair') _showRepairSheet(context);
+    if (choice == 'discard') _showDiscardSheet(context);
+  }
+
   Future<void> _showRepairSheet(BuildContext context) async {
     final cubit = context.read<ItemDetailCubit>();
     final result = await showModalBottomSheet<RepairResult>(
@@ -352,6 +394,17 @@ class _DamageCard extends StatelessWidget {
     );
     if (result == null) return;
     await cubit.repairDamage(record, result.quantity);
+  }
+
+  Future<void> _showDiscardSheet(BuildContext context) async {
+    final cubit = context.read<ItemDetailCubit>();
+    final result = await showModalBottomSheet<DiscardResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DiscardItemSheet(record: record),
+    );
+    if (result == null) return;
+    await cubit.discardDamage(record, result.quantity);
   }
 }
 

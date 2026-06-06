@@ -3,6 +3,7 @@ import 'package:googleapis/sheets/v4.dart' as sheets;
 import '../../../core/config/sheet_schema.dart';
 import '../../../core/network/google_apis.dart';
 import '../../../core/utils/a1.dart';
+import '../../../shared/models/inventory_item.dart';
 
 /// Low-level Google Sheets operations shared by the inventory and issue
 /// repositories: listing tabs, creating tabs, and batched value read/write.
@@ -448,6 +449,7 @@ class SheetsRepository {
           ),
         rule(SheetSchema.damageStatusDamaged, _rgb(0.95, 0.80, 0.80), 0),
         rule(SheetSchema.damageStatusRepaired, _rgb(0.72, 0.88, 0.80), 1),
+        rule(SheetSchema.damageStatusDiscarded, _rgb(0.88, 0.88, 0.88), 2),
       ]),
       spreadsheetId,
     );
@@ -484,6 +486,8 @@ class SheetsRepository {
                       userEnteredValue: SheetSchema.damageStatusDamaged),
                   sheets.ConditionValue(
                       userEnteredValue: SheetSchema.damageStatusRepaired),
+                  sheets.ConditionValue(
+                      userEnteredValue: SheetSchema.damageStatusDiscarded),
                 ],
               ),
               showCustomUi: true,
@@ -525,6 +529,17 @@ class SheetsRepository {
       ]),
       spreadsheetId,
     );
+  }
+
+  /// Reads a single item row by 1-based [rowIndex]. Cheaper than reading the
+  /// full section tab when only one item's data is needed.
+  Future<InventoryItem?> readItemRow(
+      String spreadsheetId, String tab, int rowIndex) async {
+    final lastCol = A1.columnLetter(SheetSchema.itemHeaders.length - 1);
+    final rows = await readRange(
+        spreadsheetId, '${_qt(tab)}!A$rowIndex:$lastCol$rowIndex');
+    if (rows.isEmpty) return null;
+    return InventoryItem.fromRow(rows.first, rowIndex: rowIndex);
   }
 
   /// Reads a single A1 range as a 2D list of strings.

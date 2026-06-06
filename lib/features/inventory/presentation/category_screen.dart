@@ -278,10 +278,17 @@ class _ItemCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ListTile(
-            onTap: () => context.push(
-              '/room/$spreadsheetId/category/${Uri.encodeComponent(tab)}/item',
-              extra: item,
-            ),
+            onTap: () async {
+              // Read cubit before the async gap — context may be stale after await.
+              final cubit = context.read<CategoryCubit>();
+              await context.push(
+                '/room/$spreadsheetId/category/${Uri.encodeComponent(tab)}/item',
+                extra: item,
+              );
+              // go_router push() completes when the route is popped.
+              // Reload so item counts (issued/damaged/available) are fresh.
+              cubit.load();
+            },
             leading: thumb != null
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(4),

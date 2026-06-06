@@ -84,6 +84,7 @@ class SheetSchema {
 
   static const String damageStatusDamaged = 'Damaged';
   static const String damageStatusRepaired = 'Repaired';
+  static const String damageStatusDiscarded = 'Discarded';
 
   static const int firstDataRow = 2;
 }

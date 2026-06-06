@@ -66,16 +66,12 @@ class IssueRepository {
       record.toRow(),
       SheetSchema.issueLogHeaders.length,
     );
-    await Future.wait([
-      // Unbold the new row (append inherits header bold).
-      _sheets.unboldDataRows(spreadsheetId, SheetSchema.issueLogTab),
-      // Dropdown only on this row's Status cell — not the whole column.
-      if (rowIndex != null)
-        _sheets.applyStatusDropdownToRow(
-            spreadsheetId, SheetSchema.issueLogTab, rowIndex),
-      // Re-apply conditional colours (idempotent, clears duplicates).
-      _sheets.formatIssueLog(spreadsheetId),
-    ]);
+    // Apply dropdown to this row's Status cell only.
+    // Conditional colours and header bold are set once at log creation.
+    if (rowIndex != null) {
+      await _sheets.applyStatusDropdownToRow(
+          spreadsheetId, SheetSchema.issueLogTab, rowIndex);
+    }
     return record;
   }
 
@@ -108,10 +104,6 @@ class IssueRepository {
   }
 
   /// Handles a partial return of [returnedQty] units from [record].
-  ///
-  /// Two parallel writes:
-  /// 1. Reduce the existing open row's Quantity by [returnedQty] (stays Open).
-  /// 2. Append a new Returned row for the [returnedQty] units.
   Future<void> partialReturn(
       String spreadsheetId, IssueRecord record, int returnedQty) async {
     if (record.rowIndex == null) {
@@ -135,7 +127,6 @@ class IssueRepository {
       status: SheetSchema.statusReturned,
     );
 
-    // Both writes in parallel.
     final rowIndexFuture = _sheets.appendRow(
       spreadsheetId,
       SheetSchema.issueLogTab,
@@ -148,12 +139,9 @@ class IssueRepository {
     ]);
 
     final newRowIndex = await rowIndexFuture;
-    await Future.wait([
-      _sheets.unboldDataRows(spreadsheetId, SheetSchema.issueLogTab),
-      if (newRowIndex != null)
-        _sheets.applyStatusDropdownToRow(
-            spreadsheetId, SheetSchema.issueLogTab, newRowIndex),
-      _sheets.formatIssueLog(spreadsheetId),
-    ]);
+    if (newRowIndex != null) {
+      await _sheets.applyStatusDropdownToRow(
+          spreadsheetId, SheetSchema.issueLogTab, newRowIndex);
+    }
   }
 }

@@ -50,6 +50,20 @@ class CatalogRepository {
     await _sheets.updateItemQuantity(spreadsheetId, tab, item.rowIndex!, newQty);
   }
 
+  /// Writes [newQty] to the Quantity cell for [item]. Used when discarding
+  /// items to permanently reduce the inventory count.
+  Future<void> updateItemQty(
+      String spreadsheetId, String tab, InventoryItem item, int newQty) async {
+    if (item.rowIndex == null) throw StateError('Row index unknown.');
+    await _sheets.updateItemQuantity(
+        spreadsheetId, tab, item.rowIndex!, newQty);
+  }
+
+  /// Reads a single item row — 1 API call vs 5 for [loadCategory].
+  Future<InventoryItem?> loadSingleItem(
+          String spreadsheetId, String tab, int rowIndex) =>
+      _sheets.readItemRow(spreadsheetId, tab, rowIndex);
+
   /// Loads all items in [tab] with `issued`/`available` filled from the log.
   Future<CategoryData> loadCategory(String spreadsheetId, String tab) async {
     final range = A1.wholeTab(tab, SheetSchema.itemHeaders.length);
@@ -126,8 +140,6 @@ class CatalogRepository {
     if (rowIndex != null) {
       await _sheets.writeItemFormulas(spreadsheetId, tab, rowIndex, item.quantity);
     }
-    // Appended rows inherit the bold header format — reset data rows to normal.
-    await _sheets.unboldDataRows(spreadsheetId, tab);
     return item;
   }
 

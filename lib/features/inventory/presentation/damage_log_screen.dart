@@ -9,6 +9,7 @@ import '../../../shared/widgets/data_view.dart';
 import '../cubit/damage_log_cubit.dart';
 import '../data/catalog_repository.dart';
 import '../data/damage_repository.dart';
+import 'widgets/discard_item_sheet.dart';
 import 'widgets/repair_item_sheet.dart';
 
 class DamageLogScreen extends StatelessWidget {
@@ -82,14 +83,34 @@ class _DamageLogCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDamaged = record.isDamaged;
-    final statusColor = isDamaged ? scheme.error : scheme.primary;
+    final isDiscarded = record.isDiscarded;
+    final statusColor = isDamaged
+        ? scheme.error
+        : isDiscarded
+            ? scheme.onSurfaceVariant
+            : scheme.primary;
+
+    final statusLabel =
+        isDamaged ? 'Damaged' : isDiscarded ? 'Discarded' : 'Repaired';
+    final statusBg = isDamaged
+        ? scheme.errorContainer
+        : isDiscarded
+            ? scheme.surfaceContainerHighest
+            : scheme.primaryContainer;
+    final statusFg = isDamaged
+        ? scheme.onErrorContainer
+        : isDiscarded
+            ? scheme.onSurfaceVariant
+            : scheme.onPrimaryContainer;
 
     return Card(
       child: ListTile(
         leading: Icon(
           isDamaged
               ? Icons.warning_amber_rounded
-              : Icons.build_circle_outlined,
+              : isDiscarded
+                  ? Icons.delete_sweep_outlined
+                  : Icons.build_circle_outlined,
           color: statusColor,
         ),
         title: Text('${record.itemDetail}  ×${record.quantity}'),
@@ -98,7 +119,7 @@ class _DamageLogCard extends StatelessWidget {
             record.categoryTab,
             'Damaged ${_fmt.format(record.damagedDate)}',
             if (record.repairDate != null)
-              'Repaired ${_fmt.format(record.repairDate!)}',
+              '${isDiscarded ? "Discarded" : "Repaired"} ${_fmt.format(record.repairDate!)}',
             if (record.details.isNotEmpty) record.details,
           ].join('  ·  '),
         ),
@@ -110,26 +131,27 @@ class _DamageLogCard extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: isDamaged
-                    ? scheme.errorContainer
-                    : scheme.primaryContainer,
+                color: statusBg,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                isDamaged ? 'Damaged' : 'Repaired',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: isDamaged
-                          ? scheme.onErrorContainer
-                          : scheme.onPrimaryContainer,
-                    ),
-              ),
+              child: Text(statusLabel,
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(color: statusFg)),
             ),
             if (isDamaged)
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: FilledButton.tonal(
-                  onPressed: () => _showRepairSheet(context),
-                  child: const Text('Repair'),
+                child: PopupMenuButton<String>(
+                  onSelected: (v) {
+                    if (v == 'repair') _showRepairSheet(context);
+                    if (v == 'discard') _showDiscardSheet(context);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'repair', child: Text('Repair')),
+                    PopupMenuItem(value: 'discard', child: Text('Discard')),
+                  ],
                 ),
               ),
           ],
@@ -147,5 +169,16 @@ class _DamageLogCard extends StatelessWidget {
     );
     if (result == null) return;
     await cubit.repairDamage(record, result.quantity);
+  }
+
+  Future<void> _showDiscardSheet(BuildContext context) async {
+    final cubit = context.read<DamageLogCubit>();
+    final result = await showModalBottomSheet<DiscardResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DiscardItemSheet(record: record),
+    );
+    if (result == null) return;
+    await cubit.discardDamage(record, result.quantity);
   }
 }
