@@ -31,9 +31,17 @@ class IssuesScreen extends StatelessWidget {
   }
 }
 
-class _IssuesView extends StatelessWidget {
+class _IssuesView extends StatefulWidget {
   const _IssuesView({required this.roomName});
   final String roomName;
+
+  @override
+  State<_IssuesView> createState() => _IssuesViewState();
+}
+
+class _IssuesViewState extends State<_IssuesView> {
+  /// When false (default) only Open records are shown.
+  bool _showAll = false;
 
   @override
   Widget build(BuildContext context) {
@@ -42,9 +50,20 @@ class _IssuesView extends StatelessWidget {
         title: const Text('Issue log'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(20),
-          child: Text(roomName, style: Theme.of(context).textTheme.bodySmall),
+          child: Text(widget.roomName,
+              style: Theme.of(context).textTheme.bodySmall),
         ),
         actions: [
+          IconButton(
+            tooltip: _showAll ? 'Show open only' : 'Show all',
+            icon: Icon(
+              _showAll ? Icons.filter_list_off : Icons.filter_list,
+              color: _showAll
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            onPressed: () => setState(() => _showAll = !_showAll),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () => context.read<IssuesCubit>().load(),
@@ -57,13 +76,22 @@ class _IssuesView extends StatelessWidget {
           return DataView<List<IssueRecord>>(
             state: state,
             onRetry: () => context.read<IssuesCubit>().load(),
-            isEmpty: (log) => log.isEmpty,
-            emptyMessage: 'No issues recorded yet.',
-            builder: (context, log) => ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: log.length,
-              itemBuilder: (context, i) => _IssueCard(record: log[i]),
-            ),
+            isEmpty: (log) =>
+                (_showAll ? log : log.where((r) => r.isOpen).toList())
+                    .isEmpty,
+            emptyMessage: _showAll
+                ? 'No issues recorded yet.'
+                : 'No open issues.',
+            builder: (context, log) {
+              final filtered =
+                  _showAll ? log : log.where((r) => r.isOpen).toList();
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: filtered.length,
+                itemBuilder: (context, i) =>
+                    _IssueCard(record: filtered[i]),
+              );
+            },
           );
         },
       ),

@@ -32,9 +32,17 @@ class DamageLogScreen extends StatelessWidget {
   }
 }
 
-class _DamageLogView extends StatelessWidget {
+class _DamageLogView extends StatefulWidget {
   const _DamageLogView({required this.roomName});
   final String roomName;
+
+  @override
+  State<_DamageLogView> createState() => _DamageLogViewState();
+}
+
+class _DamageLogViewState extends State<_DamageLogView> {
+  /// When false (default) only Damaged records are shown.
+  bool _showAll = false;
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +51,20 @@ class _DamageLogView extends StatelessWidget {
         title: const Text('Damage Log'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(20),
-          child: Text(roomName,
+          child: Text(widget.roomName,
               style: Theme.of(context).textTheme.bodySmall),
         ),
         actions: [
+          IconButton(
+            tooltip: _showAll ? 'Show damaged only' : 'Show all',
+            icon: Icon(
+              _showAll ? Icons.filter_list_off : Icons.filter_list,
+              color: _showAll
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            onPressed: () => setState(() => _showAll = !_showAll),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () => context.read<DamageLogCubit>().load(),
@@ -59,13 +77,22 @@ class _DamageLogView extends StatelessWidget {
           return DataView<List<DamageRecord>>(
             state: state,
             onRetry: () => context.read<DamageLogCubit>().load(),
-            isEmpty: (log) => log.isEmpty,
-            emptyMessage: 'No damage recorded yet.',
-            builder: (context, log) => ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: log.length,
-              itemBuilder: (context, i) => _DamageLogCard(record: log[i]),
-            ),
+            isEmpty: (log) =>
+                (_showAll ? log : log.where((r) => r.isDamaged).toList())
+                    .isEmpty,
+            emptyMessage: _showAll
+                ? 'No damage recorded yet.'
+                : 'No active damage records.',
+            builder: (context, log) {
+              final filtered =
+                  _showAll ? log : log.where((r) => r.isDamaged).toList();
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: filtered.length,
+                itemBuilder: (context, i) =>
+                    _DamageLogCard(record: filtered[i]),
+              );
+            },
           );
         },
       ),
